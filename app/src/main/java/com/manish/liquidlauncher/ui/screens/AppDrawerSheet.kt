@@ -82,7 +82,6 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.manish.liquidlauncher.model.AppInfo
 import com.manish.liquidlauncher.ui.components.GlassButton
 import com.manish.liquidlauncher.ui.components.LiquidAppIconItem
 import com.manish.liquidlauncher.ui.components.LiquidGlassSurface
@@ -90,7 +89,8 @@ import com.manish.liquidlauncher.ui.components.accentColor
 import com.manish.liquidlauncher.viewmodel.LauncherViewModel
 import kotlinx.coroutines.launch
 
-private val RailLetters: List<String> = listOf("#") + ('A'..'Z').map { it.toString() }
+private val RailLetters: List<String> =
+    listOf("#") + ('A'..'Z').map { it.toString() }
 
 private fun letterOf(label: String): String {
     val c = label.firstOrNull()?.uppercaseChar() ?: '#'
@@ -110,43 +110,80 @@ fun AppDrawerSheet(viewModel: LauncherViewModel) {
     val query = viewModel.searchQuery
 
     LaunchedEffect(viewModel.isDrawerOpen) {
-        if (!viewModel.isDrawerOpen) focusManager.clearFocus()
+        if (!viewModel.isDrawerOpen) {
+            focusManager.clearFocus()
+        }
     }
 
     val filteredApps = remember(viewModel.installedApps, query) {
         if (query.isBlank()) {
             viewModel.installedApps
         } else {
-            viewModel.installedApps.filter { it.label.contains(query, ignoreCase = true) }
+            viewModel.installedApps.filter {
+                it.label.contains(query, ignoreCase = true)
+            }
         }
     }
+
     val gridState = rememberLazyGridState()
+
     val firstIndexByLetter = remember(filteredApps) {
         val map = HashMap<String, Int>()
-        filteredApps.forEachIndexed { i, a ->
-            val l = letterOf(a.label)
-            if (!map.containsKey(l)) map[l] = i
+
+        filteredApps.forEachIndexed { i, app ->
+            val letter = letterOf(app.label)
+            if (!map.containsKey(letter)) {
+                map[letter] = i
+            }
         }
+
         map
     }
-    var railLetter by remember { mutableStateOf<String?>(null) }
-    var lastRailLetter by remember { mutableStateOf("A") }
 
-    var pull by remember { mutableIntStateOf(0) }
+    var railLetter by remember {
+        mutableStateOf<String?>(null)
+    }
+
+    var lastRailLetter by remember {
+        mutableStateOf("A")
+    }
+
+    var pull by remember {
+        mutableIntStateOf(0)
+    }
+
     val nestedConnection = remember {
         object : NestedScrollConnection {
-            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
-                if (available.y < 0f) pull = 0
+
+            override fun onPreScroll(
+                available: Offset,
+                source: NestedScrollSource
+            ): Offset {
+                if (available.y < 0f) {
+                    pull = 0
+                }
                 return Offset.Zero
             }
 
-            override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
-                if (available.y > 0f) pull += available.y.toInt()
+            override fun onPostScroll(
+                consumed: Offset,
+                available: Offset,
+                source: NestedScrollSource
+            ): Offset {
+                if (available.y > 0f) {
+                    pull += available.y.toInt()
+                }
                 return Offset.Zero
             }
 
-            override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
-                if (pull > 160) viewModel.closeDrawer()
+            override suspend fun onPostFling(
+                consumed: Velocity,
+                available: Velocity
+            ): Velocity {
+                if (pull > 160) {
+                    viewModel.closeDrawer()
+                }
+
                 pull = 0
                 return Velocity.Zero
             }
@@ -156,16 +193,35 @@ fun AppDrawerSheet(viewModel: LauncherViewModel) {
     AnimatedVisibility(
         visible = viewModel.isDrawerOpen,
         enter = fadeIn(tween(220)) +
-            slideInVertically(animationSpec = spring(dampingRatio = 0.82f, stiffness = 380f)) { it / 2 } +
-            scaleIn(animationSpec = spring(dampingRatio = 0.85f, stiffness = 380f), initialScale = 0.94f),
+            slideInVertically(
+                animationSpec = spring(
+                    dampingRatio = 0.82f,
+                    stiffness = 380f
+                )
+            ) { it / 2 } +
+            scaleIn(
+                animationSpec = spring(
+                    dampingRatio = 0.85f,
+                    stiffness = 380f
+                ),
+                initialScale = 0.94f
+            ),
         exit = fadeOut(tween(200)) +
-            slideOutVertically(animationSpec = tween(240)) { it / 3 } +
-            scaleOut(animationSpec = tween(240), targetScale = 0.96f)
+            slideOutVertically(
+                animationSpec = tween(240)
+            ) { it / 3 } +
+            scaleOut(
+                animationSpec = tween(240),
+                targetScale = 0.96f
+            )
     ) {
+
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .pointerInput(Unit) { detectTapGestures { } }
+                .pointerInput(Unit) {
+                    detectTapGestures { }
+                }
                 .background(
                     Brush.verticalGradient(
                         colors = listOf(
@@ -175,25 +231,44 @@ fun AppDrawerSheet(viewModel: LauncherViewModel) {
                     )
                 )
                 .statusBarsPadding()
-                .windowInsetsPadding(WindowInsets.ime.union(WindowInsets.navigationBars))
+                .windowInsetsPadding(
+                    WindowInsets.ime.union(
+                        WindowInsets.navigationBars
+                    )
+                )
                 .padding(horizontal = 16.dp)
                 .padding(top = 8.dp)
         ) {
-            Column(modifier = Modifier.fillMaxSize()) {
+
+            Column(
+                modifier = Modifier.fillMaxSize()
+            ) {
+
                 Column(
                     modifier = Modifier.pointerInput(Unit) {
+
                         var total = 0f
+
                         detectVerticalDragGestures(
-                            onDragStart = { total = 0f },
-                            onDragEnd = {
-                                if (total > 90f) viewModel.closeDrawer()
+                            onDragStart = {
                                 total = 0f
                             },
-                            onDragCancel = { total = 0f },
-                            onVerticalDrag = { _, dy -> total += dy }
+                            onDragEnd = {
+                                if (total > 90f) {
+                                    viewModel.closeDrawer()
+                                }
+                                total = 0f
+                            },
+                            onDragCancel = {
+                                total = 0f
+                            },
+                            onVerticalDrag = { _, dy ->
+                                total += dy
+                            }
                         )
                     }
                 ) {
+
                     Box(
                         modifier = Modifier
                             .align(Alignment.CenterHorizontally)
@@ -201,27 +276,38 @@ fun AppDrawerSheet(viewModel: LauncherViewModel) {
                             .width(44.dp)
                             .height(4.dp)
                             .clip(CircleShape)
-                            .background(Color.White.copy(alpha = 0.35f))
+                            .background(
+                                Color.White.copy(alpha = 0.35f)
+                            )
                     )
+
                     LiquidGlassSurface(
                         config = config,
                         cornerRadius = 28.dp,
                         modifier = Modifier.fillMaxWidth()
                     ) {
+
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 14.dp, vertical = 2.dp),
+                                .padding(
+                                    horizontal = 14.dp,
+                                    vertical = 2.dp
+                                ),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
+
                             Icon(
                                 imageVector = Icons.Rounded.Search,
                                 contentDescription = "Search",
                                 tint = accent
                             )
+
                             TextField(
                                 value = query,
-                                onValueChange = { viewModel.searchQuery = it },
+                                onValueChange = {
+                                    viewModel.searchQuery = it
+                                },
                                 placeholder = {
                                     Text(
                                         "Search ${viewModel.installedApps.size} apps...",
@@ -230,14 +316,29 @@ fun AppDrawerSheet(viewModel: LauncherViewModel) {
                                     )
                                 },
                                 singleLine = true,
-                                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                                keyboardOptions = KeyboardOptions(
+                                    imeAction = ImeAction.Search
+                                ),
                                 keyboardActions = KeyboardActions(
                                     onSearch = {
-                                        val first = filteredApps.firstOrNull()
-                                        if (filteredApps.size == 1 && first != null) {
-                                            viewModel.launchApp(context, view, first)
+
+                                        val first =
+                                            filteredApps.firstOrNull()
+
+                                        if (
+                                            filteredApps.size == 1 &&
+                                            first != null
+                                        ) {
+                                            viewModel.launchApp(
+                                                context,
+                                                view,
+                                                first
+                                            )
                                         } else if (filteredApps.isEmpty()) {
-                                            viewModel.webSearch(context, query)
+                                            viewModel.webSearch(
+                                                context,
+                                                query
+                                            )
                                         } else {
                                             focusManager.clearFocus()
                                         }
@@ -254,9 +355,16 @@ fun AppDrawerSheet(viewModel: LauncherViewModel) {
                                 ),
                                 modifier = Modifier.weight(1f)
                             )
-                            IconButton(onClick = {
-                                if (query.isNotEmpty()) viewModel.searchQuery = "" else viewModel.closeDrawer()
-                            }) {
+
+                            IconButton(
+                                onClick = {
+                                    if (query.isNotEmpty()) {
+                                        viewModel.searchQuery = ""
+                                    } else {
+                                        viewModel.closeDrawer()
+                                    }
+                                }
+                            ) {
                                 Icon(
                                     imageVector = Icons.Rounded.Close,
                                     contentDescription = "Close Drawer",
@@ -268,16 +376,24 @@ fun AppDrawerSheet(viewModel: LauncherViewModel) {
                 }
 
                 if (query.isNotBlank()) {
-                    Spacer(modifier = Modifier.height(10.dp))
+
+                    Spacer(
+                        modifier = Modifier.height(10.dp)
+                    )
+
                     GlassButton(
                         text = "Search the web for \"$query\"",
                         config = config,
                         icon = Icons.Rounded.Public,
                         modifier = Modifier.fillMaxWidth()
-                    ) { viewModel.webSearch(context, query) }
+                    ) {
+                        viewModel.webSearch(context, query)
+                    }
                 }
 
-                Spacer(modifier = Modifier.height(14.dp))
+                Spacer(
+                    modifier = Modifier.height(14.dp)
+                )
 
                 Box(
                     modifier = Modifier
@@ -285,6 +401,7 @@ fun AppDrawerSheet(viewModel: LauncherViewModel) {
                         .weight(1f)
                         .nestedScroll(nestedConnection)
                 ) {
+
                     LazyVerticalGrid(
                         state = gridState,
                         columns = GridCells.Fixed(4),
@@ -292,77 +409,130 @@ fun AppDrawerSheet(viewModel: LauncherViewModel) {
                             end = if (query.isBlank()) 22.dp else 0.dp,
                             bottom = 16.dp
                         ),
-                        verticalArrangement = Arrangement.spacedBy(16.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement =
+                            Arrangement.spacedBy(16.dp),
+                        horizontalArrangement =
+                            Arrangement.spacedBy(8.dp),
                         modifier = Modifier.fillMaxSize()
                     ) {
+
                         items(
                             count = filteredApps.size,
-                            key = { filteredApps[it].packageName }
+                            key = {
+                                filteredApps[it].packageName
+                            }
                         ) { index ->
+
                             val app = filteredApps[index]
-                            Box(contentAlignment = Alignment.TopCenter) {
+
+                            Box(
+                                contentAlignment = Alignment.TopCenter
+                            ) {
+
                                 LiquidAppIconItem(
                                     app = app,
                                     config = config,
-                                    entranceIndex = if (index < 24) index else -1,
-                                    onLongClick = { viewModel.menuApp = app },
-                                    onClick = { viewModel.launchApp(context, view, app) }
+                                    entranceIndex =
+                                        if (index < 24) index else -1,
+                                    onLongClick = {
+                                        viewModel.menuApp = app
+                                    },
+                                    onClick = {
+                                        viewModel.launchApp(
+                                            context,
+                                            view,
+                                            app
+                                        )
+                                    }
                                 )
                             }
                         }
                     }
 
-                    if (filteredApps.isEmpty() && query.isNotBlank()) {
+                    if (
+                        filteredApps.isEmpty() &&
+                        query.isNotBlank()
+                    ) {
                         Text(
                             text = "No apps match \"$query\"",
                             color = Color.White.copy(alpha = 0.65f),
                             fontFamily = FontFamily.SansSerif,
                             fontSize = 14.sp,
-                            modifier = Modifier.align(Alignment.Center)
+                            modifier = Modifier.align(
+                                Alignment.Center
+                            )
                         )
                     }
 
-                    if (query.isBlank() && filteredApps.size > 12) {
+                    if (
+                        query.isBlank() &&
+                        filteredApps.size > 12
+                    ) {
+
                         AlphabetRail(
                             available = firstIndexByLetter.keys,
                             accent = accent,
-                            modifier = Modifier.align(Alignment.CenterEnd),
+                            modifier = Modifier.align(
+                                Alignment.CenterEnd
+                            ),
                             onSelect = { letter ->
-                                val start = RailLetters.indexOf(letter)
-                                val target = RailLetters.drop(start).firstOrNull { it in firstIndexByLetter }
-                                    ?: RailLetters.lastOrNull { it in firstIndexByLetter }
-                                val idx = target?.let { firstIndexByLetter[it] }
-                                if (idx != null) {
-                                    scope.launch { gridState.scrollToItem(idx) }
+
+                                val start =
+                                    RailLetters.indexOf(letter)
+
+                                val target =
+                                    RailLetters.drop(start)
+                                        .firstOrNull {
+                                            it in firstIndexByLetter
+                                        }
+                                    ?: RailLetters.lastOrNull {
+                                        it in firstIndexByLetter
+                                    }
+
+                                val idx = target?.let {
+                                    firstIndexByLetter[it]
                                 }
-                                if (config.haptics) haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+
+                                if (idx != null) {
+                                    scope.launch {
+                                        gridState.scrollToItem(idx)
+                                    }
+                                }
+
+                                if (config.haptics) {
+                                    haptic.performHapticFeedback(
+                                        HapticFeedbackType.TextHandleMove
+                                    )
+                                }
+
                                 railLetter = letter
                                 lastRailLetter = letter
                             },
-                            onRelease = { railLetter = null }
+                            onRelease = {
+                                railLetter = null
+                            }
                         )
 
-                        AnimatedVisibility(
-                            visible = railLetter != null,
-                            modifier = Modifier
-                                .align(Alignment.CenterEnd)
-                                .padding(end = 52.dp),
-                            enter = fadeIn(tween(80)) + scaleIn(spring(dampingRatio = 0.45f, stiffness = 500f), initialScale = 0.4f),
-                            exit = fadeOut(tween(160)) + scaleOut(targetScale = 0.6f)
-                        ) {
+                        if (railLetter != null) {
+
                             LiquidGlassSurface(
                                 config = config,
                                 cornerRadius = 36.dp,
-                                modifier = Modifier.size(72.dp)
+                                modifier = Modifier
+                                    .align(Alignment.CenterEnd)
+                                    .padding(end = 52.dp)
+                                    .size(72.dp)
                             ) {
+
                                 Text(
                                     text = lastRailLetter,
                                     color = Color.White,
                                     fontFamily = FontFamily.SansSerif,
                                     fontSize = 34.sp,
                                     fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.align(Alignment.Center)
+                                    modifier = Modifier.align(
+                                        Alignment.Center
+                                    )
                                 )
                             }
                         }
@@ -372,7 +542,6 @@ fun AppDrawerSheet(viewModel: LauncherViewModel) {
         }
     }
 }
-
 @Composable
 private fun AlphabetRail(
     available: Set<String>,
@@ -381,33 +550,49 @@ private fun AlphabetRail(
     onSelect: (String) -> Unit,
     onRelease: () -> Unit
 ) {
-    var active by remember { mutableIntStateOf(-1) }
+    var active by remember {
+        mutableIntStateOf(-1)
+    }
+
     Column(
         modifier = modifier
             .fillMaxHeight()
             .width(22.dp)
             .padding(vertical = 6.dp)
             .pointerInput(Unit) {
+
                 awaitEachGesture {
+
                     val down = awaitFirstDown()
                     val rows = RailLetters.size
+
                     fun pick(y: Float) {
-                        val i = ((y / size.height) * rows).toInt().coerceIn(0, rows - 1)
+                        val i = (
+                            (y / size.height) * rows
+                        ).toInt().coerceIn(0, rows - 1)
+
                         if (i != active) {
                             active = i
                             onSelect(RailLetters[i])
                         }
                     }
+
                     pick(down.position.y)
                     down.consume()
+
                     do {
                         val event = awaitPointerEvent()
                         val change = event.changes.firstOrNull()
+
                         if (change != null) {
                             pick(change.position.y)
                             change.consume()
                         }
-                    } while (event.changes.any { it.pressed })
+
+                    } while (
+                        event.changes.any { it.pressed }
+                    )
+
                     active = -1
                     onRelease()
                 }
@@ -415,15 +600,31 @@ private fun AlphabetRail(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.SpaceEvenly
     ) {
+
         RailLetters.forEachIndexed { i, letter ->
+
             val scale by animateFloatAsState(
                 targetValue = if (i == active) 1.9f else 1f,
-                animationSpec = spring(dampingRatio = 0.4f, stiffness = Spring.StiffnessMedium),
+                animationSpec = spring(
+                    dampingRatio = 0.4f,
+                    stiffness = Spring.StiffnessMedium
+                ),
                 label = "railScale"
             )
+
             Text(
                 text = letter,
-                color = if (i == active) accent else Color.White.copy(alpha = if (letter in available) 0.85f else 0.28f),
+                color = if (i == active) {
+                    accent
+                } else {
+                    Color.White.copy(
+                        alpha = if (letter in available) {
+                            0.85f
+                        } else {
+                            0.28f
+                        }
+                    )
+                },
                 fontFamily = FontFamily.SansSerif,
                 fontSize = 10.sp,
                 fontWeight = FontWeight.Bold,
