@@ -5,12 +5,15 @@ import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
+import android.os.PowerManager
 import android.net.Uri
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
@@ -19,6 +22,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.withFrameNanos
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Offset
@@ -47,17 +53,70 @@ val LocalAnimClock = staticCompositionLocalOf<State<Float>> { mutableFloatStateO
 /** Smoothed device tilt in -1..1 (x = left/right, y = up/down). Read only inside draw lambdas. */
 val LocalTilt = staticCompositionLocalOf<State<Offset>> { mutableStateOf(Offset.Zero) }
 
+/** True when the device requests reduced rendering work (for example, Battery Saver). */
+val LocalReducedEffects = staticCompositionLocalOf { false }
+
+@Composable
+fun rememberPowerSaveMode(): State<Boolean> {
+    val context = LocalContext.current
+    val state = remember {
+        mutableStateOf(
+            (context.getSystemService(Context.POWER_SERVICE) as? PowerManager)?.isPowerSaveMode == true
+        )
+    }
+    DisposableEffect(context) {
+        val receiver = object : android.content.BroadcastReceiver() {
+            override fun onReceive(c: Context?, intent: android.content.Intent?) {
+                state.value =
+                    (context.getSystemService(Context.POWER_SERVICE) as? PowerManager)?.isPowerSaveMode == true
+            }
+        }
+        val filter = android.content.IntentFilter(PowerManager.ACTION_POWER_SAVE_MODE_CHANGED)
+        if (android.os.Build.VERSION.SDK_INT >= 33) {
+            context.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            @Suppress("DEPRECATION")
+            context.registerReceiver(receiver, filter)
+        }
+        onDispose {
+            try { context.unregisterReceiver(receiver) } catch (_: IllegalArgumentException) { }
+        }
+    }
+    return state
+}
+
 @Composable
 fun rememberAnimClock(running: Boolean): State<Float> {
     val time = remember { mutableFloatStateOf(0f) }
-    LaunchedEffect(running) {
-        if (!running) return@LaunchedEffect
-        var last = withFrameNanos { it }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val powerSave by rememberPowerSaveMode()
+    var foreground by remember(lifecycleOwner) {
+        mutableStateOf(lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED))
+    }
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, _ ->
+            foreground = lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    val shouldRun = running && foreground
+    LaunchedEffect(shouldRun, powerSave) {
+        if (!shouldRun) return@LaunchedEffect
+        var lastUpdate = withFrameNanos { it }
+        // Keep the frame clock synchronized, but avoid invalidating the whole wallpaper
+        // composition at the display's full refresh rate. Battery Saver uses a gentler rate.
+        val minimumFrameNanos = if (powerSave) 50_000_000L else 33_333_333L
         while (true) {
             val now = withFrameNanos { it }
-            val dt = ((now - last) / 1_000_000_000f).coerceIn(0f, 0.1f)
-            last = now
-            time.floatValue = (time.floatValue + dt) % 100000f
+            val elapsed = now - lastUpdate
+            if (elapsed >= minimumFrameNanos) {
+                val dt = (elapsed / 1_000_000_000f).coerceIn(0f, 0.15f)
+                time.floatValue = (time.floatValue + dt) % 100000f
+                lastUpdate = now
+            }
         }
     }
     return time
@@ -66,16 +125,15 @@ fun rememberAnimClock(running: Boolean): State<Float> {
 @Composable
 fun rememberTilt(enabled: Boolean): State<Offset> {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     val tilt = remember { mutableStateOf(Offset.Zero) }
-    DisposableEffect(enabled) {
-        if (!enabled) {
-            tilt.value = Offset.Zero
-            return@DisposableEffect onDispose { }
-        }
+
+    DisposableEffect(enabled, lifecycleOwner, context) {
         val manager = context.getSystemService(Context.SENSOR_SERVICE) as? SensorManager
         val sensor = manager?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
         var fx = 0f
         var fy = 0f
+        var registered = false
         val listener = object : SensorEventListener {
             override fun onSensorChanged(event: SensorEvent) {
                 val nx = (-event.values[0] / 9.81f).coerceIn(-1f, 1f)
@@ -84,13 +142,28 @@ fun rememberTilt(enabled: Boolean): State<Offset> {
                 fy += (ny - fy) * 0.08f
                 tilt.value = Offset(fx, fy)
             }
-
-            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
         }
-        if (manager != null && sensor != null) {
-            manager.registerListener(listener, sensor, SensorManager.SENSOR_DELAY_GAME)
+        fun updateRegistration() {
+            val shouldRegister = enabled &&
+                lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED) &&
+                manager != null && sensor != null
+            if (shouldRegister && !registered) {
+                registered = manager!!.registerListener(listener, sensor!!, SensorManager.SENSOR_DELAY_UI)
+            } else if (!shouldRegister && registered) {
+                manager?.unregisterListener(listener)
+                registered = false
+            }
+            if (!enabled) tilt.value = Offset.Zero
         }
-        onDispose { manager?.unregisterListener(listener) }
+        val observer = LifecycleEventObserver { _, _ -> updateRegistration() }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        updateRegistration()
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            if (registered) manager?.unregisterListener(listener)
+            tilt.value = Offset.Zero
+        }
     }
     return tilt
 }
@@ -114,6 +187,7 @@ fun LiquidWallpaper(
 ) {
     val clock = LocalAnimClock.current
     val tilt = LocalTilt.current
+    val reducedEffects = LocalReducedEffects.current
     val accent = config.accentColor()
     val second = config.secondaryColor()
 
@@ -230,7 +304,8 @@ fun LiquidWallpaper(
             }
 
             if (config.bubbles) {
-                for (i in 0 until 16) {
+                val bubbleCount = if (reducedEffects) 6 else 12
+                for (i in 0 until bubbleCount) {
                     val radius = (4f + hash01(i, 1) * 15f).dp.toPx()
                     val speed = 0.018f + hash01(i, 2) * 0.03f
                     val progress = (t * speed + hash01(i, 3)) % 1f
@@ -241,18 +316,18 @@ fun LiquidWallpaper(
                     val center = Offset(x, y)
 
                     drawCircle(
-                        color = accent.copy(alpha = 0.10f * fade),
+                        color = accent.copy(alpha = 0.065f * fade),
                         radius = radius,
                         center = center
                     )
                     drawCircle(
-                        color = Color.White.copy(alpha = 0.34f * fade),
+                        color = Color.White.copy(alpha = 0.19f * fade),
                         radius = radius,
                         center = center,
-                        style = Stroke(width = 1.2.dp.toPx())
+                        style = Stroke(width = 0.9.dp.toPx())
                     )
                     drawCircle(
-                        color = Color.White.copy(alpha = 0.75f * fade),
+                        color = Color.White.copy(alpha = 0.48f * fade),
                         radius = radius * 0.22f,
                         center = Offset(x - radius * 0.35f, y - radius * 0.35f)
                     )

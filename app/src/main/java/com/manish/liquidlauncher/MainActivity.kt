@@ -30,8 +30,10 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.manish.liquidlauncher.ui.components.LocalAnimClock
+import com.manish.liquidlauncher.ui.components.LocalReducedEffects
 import com.manish.liquidlauncher.ui.components.LocalTilt
 import com.manish.liquidlauncher.ui.components.rememberAnimClock
+import com.manish.liquidlauncher.ui.components.rememberPowerSaveMode
 import com.manish.liquidlauncher.ui.components.rememberTilt
 import com.manish.liquidlauncher.ui.screens.AppContextMenu
 import com.manish.liquidlauncher.ui.screens.AppDrawerSheet
@@ -88,12 +90,19 @@ fun LiquidLauncherRoot(viewModel: LauncherViewModel) {
     BackHandler(enabled = true) { viewModel.handleBack() }
 
     val drawerOpen = viewModel.isDrawerOpen
-    // Freeze the animation loop while the (blurred) home is hidden behind the drawer to save GPU/battery
+    val powerSave by rememberPowerSaveMode()
+    // Freeze wallpaper animation behind the drawer and whenever the Activity is backgrounded.
     val clock = rememberAnimClock(running = config.liveAnimations && !drawerOpen)
-    val tilt = rememberTilt(enabled = config.tiltEffects && !drawerOpen)
+    val tilt = rememberTilt(enabled = config.tiltEffects && !drawerOpen && !powerSave)
 
+    // Keep the glass depth, but avoid an expensive 22dp full-screen blur on mid-range phones.
+    val targetBlur = when {
+        !drawerOpen || !config.blurDrawer -> 0.dp
+        powerSave -> 7.dp
+        else -> 13.dp
+    }
     val blurRadius by animateDpAsState(
-        targetValue = if (drawerOpen && config.blurDrawer) 22.dp else 0.dp,
+        targetValue = targetBlur,
         animationSpec = tween(380),
         label = "homeBlur"
     )
@@ -103,7 +112,11 @@ fun LiquidLauncherRoot(viewModel: LauncherViewModel) {
         label = "homeScale"
     )
 
-    CompositionLocalProvider(LocalAnimClock provides clock, LocalTilt provides tilt) {
+    CompositionLocalProvider(
+        LocalAnimClock provides clock,
+        LocalTilt provides tilt,
+        LocalReducedEffects provides powerSave
+    ) {
         Box(modifier = Modifier.fillMaxSize().background(Color(0xFF030712))) {
             Box(
                 modifier = Modifier
