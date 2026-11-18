@@ -49,6 +49,8 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         private set
     var dockApps by mutableStateOf<List<AppInfo>>(emptyList())
         private set
+    var homeOrder by mutableStateOf(prefs.loadHomeOrder())
+        private set
     var frequentApps by mutableStateOf<List<AppInfo>>(emptyList())
         private set
     var hiddenPackages by mutableStateOf(prefs.loadHidden())
@@ -311,6 +313,21 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         } catch (_: Exception) {
             Toast.makeText(context, "Action not available on this device", Toast.LENGTH_SHORT).show()
         }
+    }
+
+    // ---- Home layout ----------------------------------------------------------------------
+    fun reorderHomeApps(fromIndex: Int, toIndex: Int, currentPackages: List<String>) {
+        if (fromIndex !in currentPackages.indices || toIndex !in currentPackages.indices || fromIndex == toIndex) return
+        val reordered = currentPackages.toMutableList().apply {
+            add(toIndex, removeAt(fromIndex))
+        }
+        homeOrder = reordered
+        prefs.saveHomeOrder(reordered)
+    }
+
+    fun resetHomeLayout() {
+        homeOrder = emptyList()
+        prefs.saveHomeOrder(emptyList())
     }
 
     // ---- Dock / hidden ---------------------------------------------------------------------

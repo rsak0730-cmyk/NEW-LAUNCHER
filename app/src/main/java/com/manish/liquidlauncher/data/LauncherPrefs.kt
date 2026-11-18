@@ -62,6 +62,17 @@ class LauncherPrefs(context: Context) {
         sp.edit().putString("dock", packages.joinToString(",")).apply()
     }
 
+
+    /** Saved user order for apps shown on home pages. Missing packages are ignored on rebuild. */
+    fun loadHomeOrder(): List<String> = sp.getString("home_order", null)
+        ?.split(",")
+        ?.filter { it.isNotBlank() }
+        ?: emptyList()
+
+    fun saveHomeOrder(packages: List<String>) {
+        sp.edit().putString("home_order", packages.distinct().joinToString(",")).apply()
+    }
+
     fun loadHidden(): Set<String> = sp.getStringSet("hidden", emptySet())?.toSet() ?: emptySet()
 
     fun saveHidden(hidden: Set<String>) {

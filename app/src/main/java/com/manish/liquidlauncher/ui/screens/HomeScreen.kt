@@ -13,6 +13,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -37,6 +38,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Bluetooth
+import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.FlashlightOff
 import androidx.compose.material.icons.rounded.FlashlightOn
 import androidx.compose.material.icons.rounded.Search
@@ -113,6 +116,7 @@ fun HomeScreen(
     val config = viewModel.themeConfig
     val accent = config.accentColor()
     val battery by rememberBatteryInfo()
+    var layoutEditMode by remember { mutableStateOf(false) }
 
     // Page 0 = dashboard, page 1 = home, page 2+ = extra app pages (count is computed from screen size)
     var totalPages by remember { mutableIntStateOf(2) }
@@ -142,9 +146,12 @@ fun HomeScreen(
             if (google.size >= 2) FolderState("Google", google) else null
         )
     }
-    val looseApps = remember(homeApps, folders) {
+    val looseApps = remember(homeApps, folders, viewModel.homeOrder) {
         val inFolders = folders.flatMap { f -> f.apps.map { it.packageName } }.toSet()
-        homeApps.filter { it.packageName !in inFolders }
+        val available = homeApps.filter { it.packageName !in inFolders }
+        val byPackage = available.associateBy { it.packageName }
+        val saved = viewModel.homeOrder.mapNotNull { byPackage[it] }
+        saved + available.filter { it.packageName !in viewModel.homeOrder.toSet() }
     }
 
     Box(
@@ -226,6 +233,22 @@ fun HomeScreen(
                 GlassIconButton(Icons.Rounded.Tune, "Theme Engine", config, tint = accent) {
                     viewModel.isThemeEngineOpen = true
                 }
+                GlassIconButton(
+                    icon = if (layoutEditMode) Icons.Rounded.Check else Icons.Rounded.Edit,
+                    contentDescription = if (layoutEditMode) "Finish layout editing" else "Edit home layout",
+                    config = config,
+                    tint = if (layoutEditMode) accent else Color.White
+                ) { layoutEditMode = !layoutEditMode }
+            }
+
+            if (layoutEditMode) {
+                Text(
+                    text = "LAYOUT EDITOR  •  Long-press an app, then drag to reposition",
+                    color = Color.White.copy(alpha = 0.88f),
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(top = 6.dp, start = 4.dp)
+                )
             }
 
             // ---- Pager --------------------------------------------------------------------
@@ -293,7 +316,12 @@ fun HomeScreen(
                                     rows = rowsFirst,
                                     config = config,
                                     animateIn = true,
+                                    editMode = layoutEditMode,
+                                    appIndexOffset = 0,
+                                    cellWidth = maxWidth / GRID_COLUMNS,
+                                    cellHeight = cellHeight + rowGap,
                                     onFolder = { viewModel.openedFolder = it },
+                                    onMoveApp = { from, to, packages -> viewModel.reorderHomeApps(from, to, looseApps.map { it.packageName }) },
                                     onLaunch = onLaunch,
                                     onMenu = onMenu
                                 )
@@ -303,7 +331,12 @@ fun HomeScreen(
                                 rows = rowsFull,
                                 config = config,
                                 animateIn = false,
+                                editMode = layoutEditMode,
+                                appIndexOffset = firstPageApps.size + (page - 2) * rowsFull * GRID_COLUMNS,
+                                cellWidth = maxWidth / GRID_COLUMNS,
+                                cellHeight = cellHeight + rowGap,
                                 onFolder = { viewModel.openedFolder = it },
+                                onMoveApp = { from, to, packages -> viewModel.reorderHomeApps(from, to, looseApps.map { it.packageName }) },
                                 onLaunch = onLaunch,
                                 onMenu = onMenu
                             )
@@ -340,36 +373,28 @@ fun HomeScreen(
                     }
                 }
 
-                BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-                    val dockCount = viewModel.dockApps.size.coerceAtLeast(1)
-                    // Keep every dock item inside the available width on narrow phones.
-                    val dockIconSize = ((maxWidth - 40.dp) / dockCount - 8.dp)
-                        .coerceIn(40.dp, 56.dp * config.iconScale.coerceIn(0.75f, 1.15f))
-
-                    LiquidGlassSurface(
-                        config = config,
-                        cornerRadius = 30.dp,
-                        sheen = false,
-                        modifier = Modifier.fillMaxWidth()
+                LiquidGlassSurface(
+                    config = config,
+                    cornerRadius = 32.dp,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        horizontalArrangement = Arrangement.SpaceEvenly,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 10.dp, vertical = 8.dp),
-                            horizontalArrangement = Arrangement.SpaceEvenly,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            viewModel.dockApps.forEach { app ->
-                                LiquidAppIconItem(
-                                    app = app,
-                                    config = config,
-                                    showLabel = false,
-                                    iconBoxSize = dockIconSize,
-                                    bob = false,
-                                    onLongClick = { onMenu(app) },
-                                    onClick = { onLaunch(app) }
-                                )
-                            }
+                        viewModel.dockApps.forEach { app ->
+                            LiquidAppIconItem(
+                                app = app,
+                                config = config,
+                                showLabel = false,
+                                iconBoxSize = (56f * config.iconScale).dp,
+                                bob = config.iconBob,
+                                onLongClick = { onMenu(app) },
+                                onClick = { onLaunch(app) }
+                            )
                         }
                     }
                 }
@@ -386,14 +411,13 @@ private fun rowsThatFit(available: Dp, cell: Dp, gap: Dp): Int =
 private fun Modifier.pageTransform(state: PagerState, page: Int): Modifier = graphicsLayer {
     val signed = (page - state.currentPage) - state.currentPageOffsetFraction
     val distance = abs(signed).coerceIn(0f, 1f)
-    // Subtle page transition avoids the heavy 3D edge distortion that can look
-    // like duplicated/ghosted icons on lower-powered GPUs.
-    alpha = 1f - 0.28f * distance
-    val s = 1f - 0.025f * distance
+    alpha = 1f - 0.65f * distance
+    val s = 1f - 0.07f * distance
     scaleX = s
     scaleY = s
-    rotationY = 0f
-    transformOrigin = TransformOrigin(0.5f, 0.5f)
+    rotationY = (signed * -18f).coerceIn(-18f, 18f)
+    cameraDistance = 14f * density
+    transformOrigin = TransformOrigin(if (signed > 0f) 0f else 1f, 0.5f)
 }
 
 /** Fixed, never-overflowing grid (rows are computed from the real pager height). */
@@ -403,10 +427,16 @@ private fun CellGrid(
     rows: Int,
     config: LiquidThemeConfig,
     animateIn: Boolean,
+    editMode: Boolean,
+    appIndexOffset: Int,
+    cellWidth: Dp,
+    cellHeight: Dp,
     onFolder: (FolderState) -> Unit,
+    onMoveApp: (Int, Int, List<String>) -> Unit,
     onLaunch: (AppInfo) -> Unit,
     onMenu: (AppInfo) -> Unit
 ) {
+    val appPackages = remember(cells) { cells.filterIsInstance<HomeCell.AppCell>().map { it.app.packageName } }
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(14.dp)
@@ -416,8 +446,41 @@ private fun CellGrid(
                 for (c in 0 until GRID_COLUMNS) {
                     val index = r * GRID_COLUMNS + c
                     val cell = cells.getOrNull(index)
+                    val appIndex = when (cell) {
+                        is HomeCell.AppCell -> appIndexOffset + index - cells.indexOfFirst { it is HomeCell.AppCell }
+                        else -> -1
+                    }
+                    var dragX by remember(cell) { mutableStateOf(0f) }
+                    var dragY by remember(cell) { mutableStateOf(0f) }
                     Box(
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(cellHeight)
+                            .graphicsLayer { translationX = dragX; translationY = dragY; scaleX = if (dragX != 0f || dragY != 0f) 1.06f else 1f; scaleY = if (dragX != 0f || dragY != 0f) 1.06f else 1f }
+                            .then(if (editMode && appIndex >= 0) Modifier.pointerInput(appIndex, appPackages, cellWidth, cellHeight) {
+                                var totalX = 0f
+                                var totalY = 0f
+                                detectDragGesturesAfterLongPress(
+                                    onDrag = { change, amount ->
+                                        change.consume()
+                                        totalX += amount.x
+                                        totalY += amount.y
+                                        dragX = totalX
+                                        dragY = totalY
+                                    },
+                                    onDragEnd = {
+                                        val colShift = (totalX / cellWidth.toPx()).toInt()
+                                        val rowShift = (totalY / cellHeight.toPx()).toInt()
+                                        val localStart = index - cells.indexOfFirst { it is HomeCell.AppCell }
+                                        val localTarget = (localStart + rowShift * GRID_COLUMNS + colShift).coerceIn(0, appPackages.lastIndex)
+                                        val fromGlobal = appIndexOffset + localStart
+                                        val toGlobal = appIndexOffset + localTarget
+                                        if (localStart != localTarget) onMoveApp(fromGlobal, toGlobal, appPackages)
+                                        dragX = 0f; dragY = 0f; totalX = 0f; totalY = 0f
+                                    },
+                                    onDragCancel = { dragX = 0f; dragY = 0f; totalX = 0f; totalY = 0f }
+                                )
+                            } else Modifier),
                         contentAlignment = Alignment.TopCenter
                     ) {
                         when (cell) {
