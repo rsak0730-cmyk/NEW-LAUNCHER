@@ -340,28 +340,36 @@ fun HomeScreen(
                     }
                 }
 
-                LiquidGlassSurface(
-                    config = config,
-                    cornerRadius = 32.dp,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 12.dp, vertical = 10.dp),
-                        horizontalArrangement = Arrangement.SpaceEvenly,
-                        verticalAlignment = Alignment.CenterVertically
+                BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                    val dockCount = viewModel.dockApps.size.coerceAtLeast(1)
+                    // Keep every dock item inside the available width on narrow phones.
+                    val dockIconSize = ((maxWidth - 40.dp) / dockCount - 8.dp)
+                        .coerceIn(40.dp, 56.dp * config.iconScale.coerceIn(0.75f, 1.15f))
+
+                    LiquidGlassSurface(
+                        config = config,
+                        cornerRadius = 30.dp,
+                        sheen = false,
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        viewModel.dockApps.forEach { app ->
-                            LiquidAppIconItem(
-                                app = app,
-                                config = config,
-                                showLabel = false,
-                                iconBoxSize = (56f * config.iconScale).dp,
-                                bob = config.iconBob,
-                                onLongClick = { onMenu(app) },
-                                onClick = { onLaunch(app) }
-                            )
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 10.dp, vertical = 8.dp),
+                            horizontalArrangement = Arrangement.SpaceEvenly,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            viewModel.dockApps.forEach { app ->
+                                LiquidAppIconItem(
+                                    app = app,
+                                    config = config,
+                                    showLabel = false,
+                                    iconBoxSize = dockIconSize,
+                                    bob = false,
+                                    onLongClick = { onMenu(app) },
+                                    onClick = { onLaunch(app) }
+                                )
+                            }
                         }
                     }
                 }
@@ -378,13 +386,14 @@ private fun rowsThatFit(available: Dp, cell: Dp, gap: Dp): Int =
 private fun Modifier.pageTransform(state: PagerState, page: Int): Modifier = graphicsLayer {
     val signed = (page - state.currentPage) - state.currentPageOffsetFraction
     val distance = abs(signed).coerceIn(0f, 1f)
-    alpha = 1f - 0.65f * distance
-    val s = 1f - 0.07f * distance
+    // Subtle page transition avoids the heavy 3D edge distortion that can look
+    // like duplicated/ghosted icons on lower-powered GPUs.
+    alpha = 1f - 0.28f * distance
+    val s = 1f - 0.025f * distance
     scaleX = s
     scaleY = s
-    rotationY = (signed * -18f).coerceIn(-18f, 18f)
-    cameraDistance = 14f * density
-    transformOrigin = TransformOrigin(if (signed > 0f) 0f else 1f, 0.5f)
+    rotationY = 0f
+    transformOrigin = TransformOrigin(0.5f, 0.5f)
 }
 
 /** Fixed, never-overflowing grid (rows are computed from the real pager height). */

@@ -149,10 +149,10 @@ fun LiquidGlassSurface(
     Box(
         modifier = modifier
             .shadow(
-                elevation = 12.dp,
+                elevation = 7.dp,
                 shape = shape,
-                ambientColor = accent.copy(alpha = 0.45f),
-                spotColor = accent.copy(alpha = 0.60f)
+                ambientColor = accent.copy(alpha = 0.22f),
+                spotColor = accent.copy(alpha = 0.28f)
             )
             .clip(shape)
             .drawWithCache {
@@ -418,17 +418,22 @@ fun LiquidAppIconItem(
             modifier = Modifier
                 .size(iconBoxSize)
                 .drawBehind {
-                    // Cheap layered halo instead of an expensive coloured shadow per icon
-                    val r = size.minDimension * 0.34f
-                    for (i in 1..3) {
-                        val grow = i * 3.dp.toPx()
-                        drawRoundRect(
-                            color = tint.copy(alpha = 0.13f / i),
-                            topLeft = Offset(-grow, -grow + 4.dp.toPx()),
-                            size = Size(size.width + grow * 2f, size.height + grow * 2f),
-                            cornerRadius = CornerRadius(r + grow)
-                        )
-                    }
+                    // One contained soft halo replaces three oversized outlines.
+                    // This prevents clipped/stacked rings around icons and reduces overdraw.
+                    val radius = size.minDimension * 0.72f
+                    drawCircle(
+                        brush = Brush.radialGradient(
+                            colors = listOf(
+                                tint.copy(alpha = 0.16f),
+                                tint.copy(alpha = 0.045f),
+                                Color.Transparent
+                            ),
+                            center = Offset(size.width / 2f, size.height / 0.9f),
+                            radius = radius
+                        ),
+                        radius = radius,
+                        center = Offset(size.width / 2f, size.height / 2f)
+                    )
                 }
                 .clip(shape)
                 .drawWithCache {
