@@ -99,6 +99,7 @@ private fun letterOf(label: String): String {
 }
 
 @Composable
+@OptIn(androidx.compose.animation.ExperimentalAnimationApi::class)
 fun AppDrawerSheet(viewModel: LauncherViewModel) {
     val context = LocalContext.current
     val view = LocalView.current
