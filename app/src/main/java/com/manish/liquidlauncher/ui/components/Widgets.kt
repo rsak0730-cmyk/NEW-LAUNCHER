@@ -30,7 +30,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.text.BasicText
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Bolt
 import androidx.compose.material.icons.rounded.WaterDrop
@@ -164,10 +163,11 @@ fun ClockWidget(config: LiquidThemeConfig, modifier: Modifier = Modifier) {
     )
     val numeralStyle = TextStyle(
         brush = Brush.verticalGradient(listOf(Color.White, Color.White, accent.copy(alpha = 0.85f))),
-        fontSize = 40.sp,
+        fontSize = 38.sp,
+        lineHeight = 46.sp,
         fontWeight = FontWeight.Bold,
         fontFamily = FontFamily.SansSerif,
-        fontFeatureSettings = "tnum"
+        letterSpacing = (-0.8).sp
     )
 
     LiquidGlassSurface(config = config, modifier = modifier) {
@@ -225,9 +225,11 @@ fun ClockWidget(config: LiquidThemeConfig, modifier: Modifier = Modifier) {
             Row(verticalAlignment = Alignment.Bottom) {
                 for (ch in timeText) {
                     if (ch == ':') {
-                        BasicText(
+                        Text(
                             text = ":",
                             style = numeralStyle,
+                            maxLines = 1,
+                            softWrap = false,
                             modifier = Modifier.graphicsLayer { alpha = colonAlpha }
                         )
                     } else {
@@ -241,7 +243,12 @@ fun ClockWidget(config: LiquidThemeConfig, modifier: Modifier = Modifier) {
                             },
                             label = "digit"
                         ) { digit ->
-                            BasicText(text = digit.toString(), style = numeralStyle)
+                            Text(
+                                text = digit.toString(),
+                                style = numeralStyle,
+                                maxLines = 1,
+                                softWrap = false
+                            )
                         }
                     }
                 }
