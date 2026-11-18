@@ -72,7 +72,6 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -110,7 +109,6 @@ fun AppDrawerSheet(viewModel: LauncherViewModel) {
     val accent = config.accentColor()
     val query = viewModel.searchQuery
 
-    // Make sure the keyboard goes away with the drawer
     LaunchedEffect(viewModel.isDrawerOpen) {
         if (!viewModel.isDrawerOpen) focusManager.clearFocus()
     }
@@ -134,7 +132,6 @@ fun AppDrawerSheet(viewModel: LauncherViewModel) {
     var railLetter by remember { mutableStateOf<String?>(null) }
     var lastRailLetter by remember { mutableStateOf("A") }
 
-    // Pull-down-to-close when the grid is already at the top
     var pull by remember { mutableIntStateOf(0) }
     val nestedConnection = remember {
         object : NestedScrollConnection {
@@ -168,7 +165,7 @@ fun AppDrawerSheet(viewModel: LauncherViewModel) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .pointerInput(Unit) { detectTapGestures { } } // swallow stray taps (no click-through)
+                .pointerInput(Unit) { detectTapGestures { } }
                 .background(
                     Brush.verticalGradient(
                         colors = listOf(
@@ -183,7 +180,6 @@ fun AppDrawerSheet(viewModel: LauncherViewModel) {
                 .padding(top = 8.dp)
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
-                // Header: grab handle + search (dragging the header down closes the drawer)
                 Column(
                     modifier = Modifier.pointerInput(Unit) {
                         var total = 0f
@@ -271,7 +267,6 @@ fun AppDrawerSheet(viewModel: LauncherViewModel) {
                     }
                 }
 
-                // Web search shortcut appears as soon as you type
                 if (query.isNotBlank()) {
                     Spacer(modifier = Modifier.height(10.dp))
                     GlassButton(
@@ -348,7 +343,6 @@ fun AppDrawerSheet(viewModel: LauncherViewModel) {
                             onRelease = { railLetter = null }
                         )
 
-                        // Magnified letter bubble
                         AnimatedVisibility(
                             visible = railLetter != null,
                             modifier = Modifier
@@ -379,7 +373,6 @@ fun AppDrawerSheet(viewModel: LauncherViewModel) {
     }
 }
 
-/** A-Z fast scroller: drag along the rail and letters bulge toward your finger. */
 @Composable
 private fun AlphabetRail(
     available: Set<String>,
