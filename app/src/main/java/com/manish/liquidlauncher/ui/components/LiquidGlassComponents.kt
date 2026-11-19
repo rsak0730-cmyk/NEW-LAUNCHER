@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -47,8 +48,11 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.drawOutline
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.graphicsLayer
@@ -64,13 +68,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.foundation.layout.defaultMinSize
-import androidx.compose.ui.graphics.Shape
 import com.manish.liquidlauncher.model.AppInfo
 import com.manish.liquidlauncher.model.IconShapeStyle
+import com.manish.liquidlauncher.model.LiquidThemeConfig
 import com.manish.liquidlauncher.notifications.NotificationHub
 import com.manish.liquidlauncher.util.SoundFx
-import com.manish.liquidlauncher.model.LiquidThemeConfig
 import kotlinx.coroutines.delay
 import kotlin.math.min
 import kotlin.math.sin
@@ -81,10 +83,7 @@ fun LiquidThemeConfig.secondaryColor(): Color = Color.hsv(secondaryHue.coerceIn(
 
 private val LabelShadow = TextStyle(shadow = Shadow(Color.Black.copy(alpha = 0.65f), Offset(0f, 2f), 6f))
 
-/**
- * Squash & stretch "jelly" touch feedback with optional long press + haptics.
- * pointerInput sits OUTSIDE the graphicsLayer so the hit-box never shrinks while pressed.
- */
+/** Squash & stretch jelly touch feedback. */
 fun Modifier.jellyTouch(
     haptics: Boolean = true,
     pressX: Float = 0.86f,
@@ -134,10 +133,7 @@ fun Modifier.jellyTouch(
         }
 }
 
-/**
- * Multi-layer refractive glass: frosted body, top gloss, gyro-driven specular glare,
- * periodic sheen sweep and a bevelled rim. Brushes are cached per-size.
- */
+/** Multi-layer refractive glass surface. */
 @Composable
 fun LiquidGlassSurface(
     modifier: Modifier = Modifier,
@@ -156,12 +152,7 @@ fun LiquidGlassSurface(
 
     Box(
         modifier = modifier
-            .shadow(
-                elevation = 12.dp,
-                shape = shape,
-                ambientColor = accent.copy(alpha = 0.45f),
-                spotColor = accent.copy(alpha = 0.60f)
-            )
+            .shadow(elevation = 12.dp, shape = shape, ambientColor = accent.copy(alpha = 0.45f), spotColor = accent.copy(alpha = 0.60f))
             .clip(shape)
             .drawWithCache {
                 val w = size.width
@@ -171,14 +162,12 @@ fun LiquidGlassSurface(
                 val bandW = w * 0.34f
                 val phase = ((w * 0.37f + h * 0.11f) % 100f) / 100f
 
-                val body = Brush.verticalGradient(
-                    colors = listOf(
-                        Color.White.copy(alpha = (density * 0.75f + 0.08f).coerceAtMost(0.35f)),
-                        accent.copy(alpha = (density * 0.55f).coerceAtMost(0.28f)),
-                        Color(0xFF060D18).copy(alpha = 0.66f),
-                        accent.copy(alpha = (density * 0.45f).coerceAtMost(0.24f))
-                    )
-                )
+                val body = Brush.verticalGradient(colors = listOf(
+                    Color.White.copy(alpha = (density * 0.75f + 0.08f).coerceAtMost(0.35f)),
+                    accent.copy(alpha = (density * 0.55f).coerceAtMost(0.28f)),
+                    Color(0xFF060D18).copy(alpha = 0.66f),
+                    accent.copy(alpha = (density * 0.45f).coerceAtMost(0.24f))
+                ))
                 val topGloss = Brush.verticalGradient(
                     colors = listOf(Color.White.copy(alpha = 0.15f), Color.Transparent),
                     startY = 0f,
@@ -210,32 +199,23 @@ fun LiquidGlassSurface(
                     drawRect(body)
                     drawRect(topGloss)
                     drawContent()
-
-                    // Gyro-driven specular glare
                     translate(
                         left = w * (0.5f + tilt.value.x * 0.55f),
                         top = h * (0.25f + tilt.value.y * 0.35f)
                     ) {
                         drawCircle(brush = glare, radius = glareRadius, center = Offset.Zero)
                     }
-
-                    // Periodic sheen sweep
                     if (sheen) {
                         val cycle = (clock.value * 0.12f + phase * 1.8f) % 1.8f
                         if (cycle < 1f) {
                             val x = -bandW + cycle * (w + bandW * 2f)
                             rotate(degrees = 18f, pivot = Offset(w / 2f, h / 2f)) {
                                 translate(left = x) {
-                                    drawRect(
-                                        brush = band,
-                                        topLeft = Offset(0f, -h),
-                                        size = Size(bandW, h * 3f)
-                                    )
+                                    drawRect(brush = band, topLeft = Offset(0f, -h), size = Size(bandW, h * 3f))
                                 }
                             }
                         }
                     }
-
                     drawRoundRect(
                         brush = rim,
                         topLeft = Offset(sw / 2f, sw / 2f),
@@ -263,17 +243,13 @@ fun GlassIconButton(
     LiquidGlassSurface(
         config = config,
         cornerRadius = size / 2,
-        modifier = modifier
-            .size(size)
-            .jellyTouch(haptics = config.haptics, onClick = onClick)
+        modifier = modifier.size(size).jellyTouch(haptics = config.haptics, onClick = onClick)
     ) {
         Icon(
             imageVector = icon,
             contentDescription = contentDescription,
             tint = tint,
-            modifier = Modifier
-                .align(Alignment.Center)
-                .size(20.dp)
+            modifier = Modifier.align(Alignment.Center).size(20.dp)
         )
     }
 }
@@ -293,24 +269,15 @@ fun GlassButton(
         cornerRadius = 18.dp,
         tintOverride = tint,
         sheen = false,
-        modifier = modifier
-            .height(46.dp)
-            .jellyTouch(haptics = config.haptics, pressX = 0.95f, pressY = 0.88f, onClick = onClick)
+        modifier = modifier.height(46.dp).jellyTouch(haptics = config.haptics, pressX = 0.95f, pressY = 0.88f, onClick = onClick)
     ) {
         Row(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 14.dp),
+            modifier = Modifier.fillMaxSize().padding(horizontal = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center
         ) {
             if (icon != null) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    tint = tint ?: config.accentColor(),
-                    modifier = Modifier.size(18.dp)
-                )
+                Icon(imageVector = icon, contentDescription = null, tint = tint ?: config.accentColor(), modifier = Modifier.size(18.dp))
                 Spacer(modifier = Modifier.width(8.dp))
             }
             Text(
@@ -326,13 +293,9 @@ fun GlassButton(
     }
 }
 
-/** Squishy liquid toggle with spring overshoot and a stretching thumb. */
+/** Squishy liquid toggle. */
 @Composable
-fun LiquidSwitch(
-    checked: Boolean,
-    accent: Color,
-    onCheckedChange: (Boolean) -> Unit
-) {
+fun LiquidSwitch(checked: Boolean, accent: Color, onCheckedChange: (Boolean) -> Unit) {
     val progress by animateFloatAsState(
         targetValue = if (checked) 1f else 0f,
         animationSpec = spring(dampingRatio = 0.45f, stiffness = Spring.StiffnessMedium),
@@ -373,9 +336,7 @@ fun LiquidSwitch(
                 .width(thumbWidth)
                 .height(22.dp)
                 .clip(CircleShape)
-                .background(
-                    Brush.verticalGradient(listOf(Color.White, Color(0xFFCFE8FF)))
-                )
+                .background(Brush.verticalGradient(listOf(Color.White, Color(0xFFCFE8FF))))
         )
     }
 }
@@ -383,9 +344,7 @@ fun LiquidSwitch(
 fun iconShapeFor(style: IconShapeStyle, size: Dp): Shape = when (style) {
     IconShapeStyle.Squircle -> RoundedCornerShape((size.value * 0.34f).dp)
     IconShapeStyle.Circle -> CircleShape
-    IconShapeStyle.Teardrop -> RoundedCornerShape(
-        topStartPercent = 50, topEndPercent = 50, bottomEndPercent = 12, bottomStartPercent = 50
-    )
+    IconShapeStyle.Teardrop -> RoundedCornerShape(topStartPercent = 50, topEndPercent = 50, bottomEndPercent = 12, bottomStartPercent = 50)
     IconShapeStyle.Square -> RoundedCornerShape((size.value * 0.14f).dp)
 }
 
@@ -394,26 +353,16 @@ fun iconShapeFor(style: IconShapeStyle, size: Dp): Shape = when (style) {
 fun CountBadge(count: Int, modifier: Modifier = Modifier) {
     val label = if (count > 99) "99+" else count.toString()
     Box(
-        modifier = modifier
-            .popIn()
-            .defaultMinSize(minWidth = 18.dp, minHeight = 18.dp)
-            .clip(CircleShape)
+        modifier = modifier.popIn().defaultMinSize(minWidth = 18.dp, minHeight = 18.dp).clip(CircleShape)
             .background(Brush.verticalGradient(listOf(Color(0xFFFF8A80), Color(0xFFFF1744))))
-            .border(1.dp, Color.White.copy(alpha = 0.85f), CircleShape)
-            .padding(horizontal = 5.dp),
+            .border(1.dp, Color.White.copy(alpha = 0.85f), CircleShape).padding(horizontal = 5.dp),
         contentAlignment = Alignment.Center
     ) {
-        Text(
-            text = label,
-            color = Color.White,
-            fontSize = 10.sp,
-            fontWeight = FontWeight.Bold,
-            maxLines = 1
-        )
+        Text(text = label, color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold, maxLines = 1)
     }
 }
 
-/** Bubbly glass app icon: glow halo, jelly press, pop-in, idle bob, tilt highlight, badges, shapes. */
+/** Bubbly glass app icon. */
 @Composable
 fun LiquidAppIconItem(
     app: AppInfo,
@@ -463,7 +412,6 @@ fun LiquidAppIconItem(
                 modifier = Modifier
                     .fillMaxSize()
                     .drawBehind {
-                        // Cheap layered halo instead of an expensive coloured shadow per icon
                         val r = if (style == IconShapeStyle.Circle) size.minDimension / 2f else size.minDimension * 0.34f
                         for (i in 1..3) {
                             val grow = i * 3.dp.toPx()
@@ -482,21 +430,12 @@ fun LiquidAppIconItem(
                         val sw = 1.25.dp.toPx()
                         val outline = shape.createOutline(size, layoutDirection, this)
                         val base = Brush.radialGradient(
-                            colors = listOf(
-                                tint.copy(alpha = 0.50f),
-                                Color(0xFF0A1322).copy(alpha = 0.82f),
-                                tint.copy(alpha = 0.58f)
-                            ),
+                            colors = listOf(tint.copy(alpha = 0.50f), Color(0xFF0A1322).copy(alpha = 0.82f), tint.copy(alpha = 0.58f)),
                             center = Offset(w * 0.3f, h * 0.25f),
                             radius = w * 1.2f
                         )
                         val rim = Brush.linearGradient(
-                            colors = listOf(
-                                Color.White.copy(alpha = 0.85f),
-                                tint.copy(alpha = 0.65f),
-                                Color.White.copy(alpha = 0.12f),
-                                tint.copy(alpha = 0.75f)
-                            ),
+                            colors = listOf(Color.White.copy(alpha = 0.85f), tint.copy(alpha = 0.65f), Color.White.copy(alpha = 0.12f), tint.copy(alpha = 0.75f)),
                             start = Offset.Zero,
                             end = Offset(w, h)
                         )
@@ -507,55 +446,28 @@ fun LiquidAppIconItem(
                             quadraticBezierTo(w * 0.5f, h * 0.14f, 0f, h * 0.40f)
                             close()
                         }
-                        val glossBrush = Brush.verticalGradient(
-                            colors = listOf(Color.White.copy(alpha = 0.34f), Color.Transparent),
-                            startY = 0f,
-                            endY = h * 0.45f
-                        )
-                        val caustic = Brush.verticalGradient(
-                            colors = listOf(Color.Transparent, Color.White.copy(alpha = 0.18f)),
-                            startY = h * 0.62f,
-                            endY = h
-                        )
+                        val glossBrush = Brush.verticalGradient(colors = listOf(Color.White.copy(alpha = 0.34f), Color.Transparent), startY = 0f, endY = h * 0.45f)
+                        val caustic = Brush.verticalGradient(colors = listOf(Color.Transparent, Color.White.copy(alpha = 0.18f)), startY = h * 0.62f, endY = h)
                         val dotRadius = w * 0.13f
-                        val dot = Brush.radialGradient(
-                            colors = listOf(Color.White.copy(alpha = 0.95f), Color.Transparent),
-                            center = Offset.Zero,
-                            radius = dotRadius
-                        )
+                        val dot = Brush.radialGradient(colors = listOf(Color.White.copy(alpha = 0.95f), Color.Transparent), center = Offset.Zero, radius = dotRadius)
 
                         onDrawWithContent {
                             drawRect(base)
                             drawContent()
                             drawPath(gloss, glossBrush)
                             drawRect(caustic)
-                            // Bubble highlight that slides with device tilt
-                            translate(
-                                left = w * 0.27f + tilt.value.x * w * 0.10f,
-                                top = h * 0.21f + tilt.value.y * h * 0.08f
-                            ) {
+                            translate(left = w * 0.27f + tilt.value.x * w * 0.10f, top = h * 0.21f + tilt.value.y * h * 0.08f) {
                                 drawCircle(brush = dot, radius = dotRadius, center = Offset.Zero)
                             }
-                            drawOutline(outline = outline, brush = rim, style = Stroke(width = sw))
+                            drawOutline(outline, rim, style = Stroke(width = sw))
                         }
                     },
                 contentAlignment = Alignment.Center
             ) {
-                Image(
-                    bitmap = app.icon,
-                    contentDescription = app.label,
-                    modifier = Modifier
-                        .size(iconBoxSize * 0.62f)
-                        .clip(RoundedCornerShape(iconBoxSize * 0.2f))
-                )
+                Image(bitmap = app.icon, contentDescription = app.label, modifier = Modifier.size(iconBoxSize * 0.62f).clip(RoundedCornerShape(iconBoxSize * 0.2f)))
             }
             if (badge > 0) {
-                CountBadge(
-                    count = badge,
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .offset(x = 5.dp, y = (-5).dp)
-                )
+                CountBadge(count = badge, modifier = Modifier.align(Alignment.TopEnd).offset(x = 5.dp, y = (-5).dp))
             }
         }
 
@@ -577,13 +489,7 @@ fun LiquidAppIconItem(
 }
 
 @Composable
-fun LiquidFolderItem(
-    title: String,
-    apps: List<AppInfo>,
-    config: LiquidThemeConfig,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit
-) {
+fun LiquidFolderItem(title: String, apps: List<AppInfo>, config: LiquidThemeConfig, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val accent = config.accentColor()
     val boxSize = (60f * config.iconScale).dp
     val mini = boxSize * 0.32f
@@ -592,36 +498,18 @@ fun LiquidFolderItem(
 
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = modifier
-            .jellyTouch(haptics = config.haptics, onClick = onClick)
-            .padding(2.dp)
+        modifier = modifier.jellyTouch(haptics = config.haptics, onClick = onClick).padding(2.dp)
     ) {
         Box(modifier = Modifier.size(boxSize)) {
-            LiquidGlassSurface(
-                config = config,
-                cornerRadius = (boxSize.value * 0.35f).dp,
-                tintOverride = accent,
-                modifier = Modifier.size(boxSize)
-            ) {
-                Column(
-                    modifier = Modifier
-                        .align(Alignment.Center)
-                        .padding(2.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
+            LiquidGlassSurface(config = config, cornerRadius = (boxSize.value * 0.35f).dp, tintOverride = accent, modifier = Modifier.size(boxSize)) {
+                Column(modifier = Modifier.align(Alignment.Center).padding(2.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     val preview = apps.take(4)
                     for (row in 0..1) {
                         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                             for (col in 0..1) {
                                 val idx = row * 2 + col
                                 if (idx < preview.size) {
-                                    Image(
-                                        bitmap = preview[idx].icon,
-                                        contentDescription = null,
-                                        modifier = Modifier
-                                            .size(mini)
-                                            .clip(RoundedCornerShape(mini * 0.3f))
-                                    )
+                                    Image(bitmap = preview[idx].icon, contentDescription = null, modifier = Modifier.size(mini).clip(RoundedCornerShape(mini * 0.3f)))
                                 } else {
                                     Spacer(modifier = Modifier.size(mini))
                                 }
@@ -631,12 +519,7 @@ fun LiquidFolderItem(
                 }
             }
             if (badge > 0) {
-                CountBadge(
-                    count = badge,
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .offset(x = 5.dp, y = (-5).dp)
-                )
+                CountBadge(count = badge, modifier = Modifier.align(Alignment.TopEnd).offset(x = 5.dp, y = (-5).dp))
             }
         }
         if (config.showLabels) {
@@ -655,7 +538,7 @@ fun LiquidFolderItem(
     }
 }
 
-/** Bouncy scale-in used by cards that appear inside an already-visible overlay. */
+/** Bouncy scale-in for overlay cards. */
 fun Modifier.popIn(): Modifier = composed {
     val progress = remember { Animatable(0.6f) }
     LaunchedEffect(Unit) {
