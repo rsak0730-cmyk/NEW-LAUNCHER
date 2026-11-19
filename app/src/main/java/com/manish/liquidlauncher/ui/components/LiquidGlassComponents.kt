@@ -43,6 +43,7 @@ import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -52,7 +53,6 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.drawOutline
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.graphicsLayer
@@ -428,7 +428,27 @@ fun LiquidAppIconItem(
                         val w = size.width
                         val h = size.height
                         val sw = 1.25.dp.toPx()
-                        val outline = shape.createOutline(size, layoutDirection, this)
+                        val half = sw / 2f
+                        val radii = when (style) {
+                            IconShapeStyle.Squircle -> floatArrayOf(w * 0.34f, w * 0.34f, w * 0.34f, w * 0.34f)
+                            IconShapeStyle.Circle -> floatArrayOf(w / 2f, w / 2f, w / 2f, w / 2f)
+                            IconShapeStyle.Teardrop -> floatArrayOf(w / 2f, w / 2f, w * 0.12f, w / 2f)
+                            IconShapeStyle.Square -> floatArrayOf(w * 0.14f, w * 0.14f, w * 0.14f, w * 0.14f)
+                        }
+                        val rimPath = Path().apply {
+                            addRoundRect(
+                                RoundRect(
+                                    left = half,
+                                    top = half,
+                                    right = w - half,
+                                    bottom = h - half,
+                                    topLeftCornerRadius = CornerRadius((radii[0] - half).coerceAtLeast(0f)),
+                                    topRightCornerRadius = CornerRadius((radii[1] - half).coerceAtLeast(0f)),
+                                    bottomRightCornerRadius = CornerRadius((radii[2] - half).coerceAtLeast(0f)),
+                                    bottomLeftCornerRadius = CornerRadius((radii[3] - half).coerceAtLeast(0f))
+                                )
+                            )
+                        }
                         val base = Brush.radialGradient(
                             colors = listOf(tint.copy(alpha = 0.50f), Color(0xFF0A1322).copy(alpha = 0.82f), tint.copy(alpha = 0.58f)),
                             center = Offset(w * 0.3f, h * 0.25f),
@@ -459,7 +479,7 @@ fun LiquidAppIconItem(
                             translate(left = w * 0.27f + tilt.value.x * w * 0.10f, top = h * 0.21f + tilt.value.y * h * 0.08f) {
                                 drawCircle(brush = dot, radius = dotRadius, center = Offset.Zero)
                             }
-                            drawOutline(outline, rim, style = Stroke(width = sw))
+                            drawPath(rimPath, brush = rim, style = Stroke(width = sw))
                         }
                     },
                 contentAlignment = Alignment.Center

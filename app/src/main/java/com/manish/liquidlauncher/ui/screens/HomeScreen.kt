@@ -74,10 +74,6 @@ import com.manish.liquidlauncher.model.AppInfo
 import com.manish.liquidlauncher.model.FolderState
 import com.manish.liquidlauncher.model.LiquidThemeConfig
 import com.manish.liquidlauncher.notifications.NotificationHub
-<<<<<<< HEAD
-=======
-import com.manish.liquidlauncher.ui.components.AppsRow
->>>>>>> 57b056f3604f181802aad1e75769781adc32d382
 import com.manish.liquidlauncher.ui.components.BatteryWidget
 import com.manish.liquidlauncher.ui.components.ClockWidget
 import com.manish.liquidlauncher.ui.components.GaugeCard
@@ -131,10 +127,7 @@ private fun readStorage(): UsageStat {
 
 private fun gb(bytes: Long): String = String.format(java.util.Locale.US, "%.1f", bytes / 1_073_741_824.0)
 
-<<<<<<< HEAD
 @OptIn(ExperimentalFoundationApi::class)
-=======
->>>>>>> 57b056f3604f181802aad1e75769781adc32d382
 @Composable
 fun HomeScreen(viewModel: LauncherViewModel, onPickWallpaper: () -> Unit) {
     val context = LocalContext.current
