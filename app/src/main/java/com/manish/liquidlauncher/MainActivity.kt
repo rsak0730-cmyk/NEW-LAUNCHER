@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
@@ -30,17 +31,17 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.manish.liquidlauncher.ui.components.LocalAnimClock
-import com.manish.liquidlauncher.ui.components.LocalReducedEffects
 import com.manish.liquidlauncher.ui.components.LocalTilt
 import com.manish.liquidlauncher.ui.components.rememberAnimClock
-import com.manish.liquidlauncher.ui.components.rememberPowerSaveMode
 import com.manish.liquidlauncher.ui.components.rememberTilt
 import com.manish.liquidlauncher.ui.screens.AppContextMenu
 import com.manish.liquidlauncher.ui.screens.AppDrawerSheet
 import com.manish.liquidlauncher.ui.screens.FolderOverlay
 import com.manish.liquidlauncher.ui.screens.HomeScreen
+import com.manish.liquidlauncher.ui.screens.IdleScreen
 import com.manish.liquidlauncher.ui.screens.ThemeEngineSheet
 import com.manish.liquidlauncher.ui.theme.LiquidGlassTheme
+import com.manish.liquidlauncher.util.SoundFx
 import com.manish.liquidlauncher.viewmodel.LauncherViewModel
 
 class MainActivity : ComponentActivity() {
@@ -75,8 +76,10 @@ fun LiquidLauncherRoot(viewModel: LauncherViewModel) {
     val context = LocalContext.current
     val config = viewModel.themeConfig
 
+    SideEffect { SoundFx.enabled = config.sounds }
+
     // Persistable permission keeps the wallpaper working after reboot
-    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+    val wallpaperPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
         if (uri != null) {
             try {
                 context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
@@ -85,24 +88,23 @@ fun LiquidLauncherRoot(viewModel: LauncherViewModel) {
             viewModel.setWallpaper(uri)
         }
     }
-    val pickWallpaper: () -> Unit = { picker.launch(arrayOf("image/*")) }
+    val exportPicker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri: Uri? ->
+        if (uri != null) viewModel.exportBackup(context, uri)
+    }
+    val importPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+        if (uri != null) viewModel.importBackup(context, uri)
+    }
+    val pickWallpaper: () -> Unit = { wallpaperPicker.launch(arrayOf("image/*")) }
 
     BackHandler(enabled = true) { viewModel.handleBack() }
 
     val drawerOpen = viewModel.isDrawerOpen
-    val powerSave by rememberPowerSaveMode()
-    // Freeze wallpaper animation behind the drawer and whenever the Activity is backgrounded.
+    // Freeze the animation loop while the (blurred) home is hidden behind the drawer to save GPU/battery
     val clock = rememberAnimClock(running = config.liveAnimations && !drawerOpen)
-    val tilt = rememberTilt(enabled = config.tiltEffects && !drawerOpen && !powerSave)
+    val tilt = rememberTilt(enabled = config.tiltEffects && !drawerOpen)
 
-    // Keep the glass depth, but avoid an expensive 22dp full-screen blur on mid-range phones.
-    val targetBlur = when {
-        !drawerOpen || !config.blurDrawer -> 0.dp
-        powerSave -> 7.dp
-        else -> 13.dp
-    }
     val blurRadius by animateDpAsState(
-        targetValue = targetBlur,
+        targetValue = if (drawerOpen && config.blurDrawer) 22.dp else 0.dp,
         animationSpec = tween(380),
         label = "homeBlur"
     )
@@ -112,11 +114,7 @@ fun LiquidLauncherRoot(viewModel: LauncherViewModel) {
         label = "homeScale"
     )
 
-    CompositionLocalProvider(
-        LocalAnimClock provides clock,
-        LocalTilt provides tilt,
-        LocalReducedEffects provides powerSave
-    ) {
+    CompositionLocalProvider(LocalAnimClock provides clock, LocalTilt provides tilt) {
         Box(modifier = Modifier.fillMaxSize().background(Color(0xFF030712))) {
             Box(
                 modifier = Modifier
@@ -131,8 +129,14 @@ fun LiquidLauncherRoot(viewModel: LauncherViewModel) {
             }
             AppDrawerSheet(viewModel = viewModel)
             FolderOverlay(viewModel = viewModel)
-            ThemeEngineSheet(viewModel = viewModel, onPickWallpaper = pickWallpaper)
+            ThemeEngineSheet(
+                viewModel = viewModel,
+                onPickWallpaper = pickWallpaper,
+                onExport = { exportPicker.launch("liquid-launcher-backup.json") },
+                onImport = { importPicker.launch(arrayOf("application/json", "text/plain", "*/*")) }
+            )
             AppContextMenu(viewModel = viewModel)
+            IdleScreen(viewModel = viewModel)
         }
     }
 }

@@ -24,3 +24,16 @@
 - Drawer: blurred/scaled home behind (Android 12+), A–Z fast scroller with magnified bubble, web-search fallback, pull-down to close, enter launches single match.
 - Long-press menu: open, app info, uninstall, add/remove dock, hide app.
 - Theme Engine: presets, secondary hue, icon size, 7 effect toggles, restore hidden apps, wallpaper controls.
+
+# v3.0 additions
+- Notification badges (glass count bubbles on icons and folders) via notification access.
+- Music widget (spinning art, jelly play/pause/next) and animated time-of-day Sky widget.
+- Icon shapes: Squircle / Circle / Drop / Square.
+- Your own folders: long-press app > Add to folder (create, add, remove, delete).
+- Smart suggestions for the current time of day (morning / afternoon / evening / night).
+- Focus mode: mark apps as distracting, toggle Focus tile to hide them.
+- Match theme to wallpaper (extracts two hues from your image).
+- Backup / restore of theme, dock, folders, hidden and focus apps to a JSON file.
+- Idle mode: always-on style liquid clock that drifts to avoid burn-in; tap to exit.
+- Water-drop sound effects (synthesised, toggleable).
+- Gestures: double-tap empty space = lock screen, long-press empty space = Theme Engine.

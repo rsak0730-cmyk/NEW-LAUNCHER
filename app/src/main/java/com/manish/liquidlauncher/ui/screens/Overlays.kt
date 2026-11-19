@@ -17,19 +17,26 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.Folder
+import androidx.compose.material.icons.rounded.NightsStay
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.PushPin
 import androidx.compose.material.icons.rounded.VisibilityOff
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
@@ -40,6 +47,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontFamily
@@ -104,6 +112,7 @@ fun FolderOverlay(viewModel: LauncherViewModel) {
                             fontSize = 20.sp,
                             fontWeight = FontWeight.Bold
                         )
+                        val isCustom = viewModel.customFolders.any { it.name == shown?.title }
                         LazyVerticalGrid(
                             columns = GridCells.Fixed(4),
                             verticalArrangement = Arrangement.spacedBy(14.dp),
@@ -121,6 +130,12 @@ fun FolderOverlay(viewModel: LauncherViewModel) {
                                     )
                                 }
                             }
+                        }
+                        if (isCustom) {
+                            GlassButton(
+                                "Delete folder", config, Modifier.fillMaxWidth(), Icons.Rounded.Delete,
+                                tint = Color(0xFFFF6B6B)
+                            ) { viewModel.deleteFolder(shown?.title ?: "") }
                         }
                     }
                 }
@@ -153,6 +168,7 @@ fun AppContextMenu(viewModel: LauncherViewModel) {
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null
                 ) { viewModel.menuApp = null }
+                .imePadding()
                 .padding(28.dp),
             contentAlignment = Alignment.Center
         ) {
@@ -168,48 +184,124 @@ fun AppContextMenu(viewModel: LauncherViewModel) {
                         ) { }
                 ) {
                     if (shown != null) {
-                        Column(
-                            modifier = Modifier.padding(20.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            Image(
-                                bitmap = shown.icon,
-                                contentDescription = shown.label,
-                                modifier = Modifier
-                                    .size(64.dp)
-                                    .clip(RoundedCornerShape(20.dp))
-                            )
-                            Text(
-                                text = shown.label,
-                                color = Color.White,
-                                fontFamily = FontFamily.SansSerif,
-                                fontSize = 18.sp,
-                                fontWeight = FontWeight.Bold,
-                                textAlign = TextAlign.Center
-                            )
-                            val inDock = viewModel.isInDock(shown.packageName)
-                            GlassButton("Open", config, Modifier.fillMaxWidth(), Icons.Rounded.PlayArrow) {
-                                viewModel.launchApp(context, view, shown)
-                            }
-                            GlassButton("App info", config, Modifier.fillMaxWidth(), Icons.Rounded.Info) {
-                                viewModel.openAppInfo(context, shown)
-                            }
-                            GlassButton(
-                                if (inDock) "Remove from dock" else "Add to dock",
-                                config, Modifier.fillMaxWidth(), Icons.Rounded.PushPin
-                            ) { viewModel.toggleDock(shown) }
-                            GlassButton("Hide app", config, Modifier.fillMaxWidth(), Icons.Rounded.VisibilityOff) {
-                                viewModel.hideApp(shown)
-                            }
-                            GlassButton(
-                                "Uninstall", config, Modifier.fillMaxWidth(), Icons.Rounded.Delete,
-                                tint = Color(0xFFFF6B6B)
-                            ) { viewModel.uninstall(context, shown) }
-                        }
+                        MenuContent(viewModel, shown)
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun MenuContent(viewModel: LauncherViewModel, shown: AppInfo) {
+    val config = viewModel.themeConfig
+    val context = LocalContext.current
+    val view = LocalView.current
+    val maxHeight = (LocalConfiguration.current.screenHeightDp * 0.78f).dp
+    var picking by remember(shown.packageName) { mutableStateOf(false) }
+    var newName by remember(shown.packageName) { mutableStateOf("") }
+    val inDock = viewModel.isInDock(shown.packageName)
+    val currentFolder = viewModel.folderOf(shown.packageName)
+
+    Column(
+        modifier = Modifier
+            .heightIn(max = maxHeight)
+            .verticalScroll(rememberScrollState())
+            .padding(20.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Image(
+            bitmap = shown.icon,
+            contentDescription = shown.label,
+            modifier = Modifier
+                .size(64.dp)
+                .clip(RoundedCornerShape(20.dp))
+        )
+        Text(
+            text = shown.label,
+            color = Color.White,
+            fontFamily = FontFamily.SansSerif,
+            fontSize = 18.sp,
+            fontWeight = FontWeight.Bold,
+            textAlign = TextAlign.Center
+        )
+
+        if (!picking) {
+            GlassButton("Open", config, Modifier.fillMaxWidth(), Icons.Rounded.PlayArrow) {
+                viewModel.launchApp(context, view, shown)
+            }
+            GlassButton("App info", config, Modifier.fillMaxWidth(), Icons.Rounded.Info) {
+                viewModel.openAppInfo(context, shown)
+            }
+            GlassButton(
+                if (currentFolder != null) "Folder: $currentFolder" else "Add to folder",
+                config, Modifier.fillMaxWidth(), Icons.Rounded.Folder
+            ) { picking = true }
+            GlassButton(
+                if (inDock) "Remove from dock" else "Add to dock",
+                config, Modifier.fillMaxWidth(), Icons.Rounded.PushPin
+            ) { viewModel.toggleDock(shown) }
+            GlassButton(
+                if (viewModel.isDistracting(shown.packageName)) "Unmark distracting" else "Mark as distracting",
+                config, Modifier.fillMaxWidth(), Icons.Rounded.NightsStay
+            ) { viewModel.toggleDistracting(shown) }
+            GlassButton("Hide app", config, Modifier.fillMaxWidth(), Icons.Rounded.VisibilityOff) {
+                viewModel.hideApp(shown)
+            }
+            GlassButton(
+                "Uninstall", config, Modifier.fillMaxWidth(), Icons.Rounded.Delete,
+                tint = Color(0xFFFF6B6B)
+            ) { viewModel.uninstall(context, shown) }
+        } else {
+            Text(
+                text = "Choose a folder",
+                color = Color.White.copy(alpha = 0.7f),
+                fontFamily = FontFamily.SansSerif,
+                fontSize = 13.sp
+            )
+            viewModel.customFolders.forEach { folder ->
+                GlassButton(
+                    "${folder.name} (${folder.packages.size})",
+                    config, Modifier.fillMaxWidth(), Icons.Rounded.Folder
+                ) { viewModel.addToFolder(folder.name, shown) }
+            }
+            LiquidGlassSurface(
+                config = config,
+                cornerRadius = 18.dp,
+                sheen = false,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                TextField(
+                    value = newName,
+                    onValueChange = { newName = it.take(20) },
+                    placeholder = {
+                        Text("New folder name", color = Color.White.copy(alpha = 0.5f), fontSize = 13.sp)
+                    },
+                    singleLine = true,
+                    colors = TextFieldDefaults.colors(
+                        focusedContainerColor = Color.Transparent,
+                        unfocusedContainerColor = Color.Transparent,
+                        focusedIndicatorColor = Color.Transparent,
+                        unfocusedIndicatorColor = Color.Transparent,
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+            if (newName.isNotBlank()) {
+                GlassButton("Create \"${newName.trim()}\"", config, Modifier.fillMaxWidth(), Icons.Rounded.Folder) {
+                    viewModel.addToFolder(newName, shown)
+                }
+            }
+            if (currentFolder != null) {
+                GlassButton(
+                    "Remove from $currentFolder", config, Modifier.fillMaxWidth(), Icons.Rounded.Delete,
+                    tint = Color(0xFFFF6B6B)
+                ) { viewModel.removeFromFolder(shown) }
+            }
+            GlassButton("Back", config, Modifier.fillMaxWidth()) { picking = false }
         }
     }
 }

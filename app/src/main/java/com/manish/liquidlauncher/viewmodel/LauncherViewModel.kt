@@ -27,8 +27,11 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.manish.liquidlauncher.data.LauncherPrefs
 import com.manish.liquidlauncher.model.AppInfo
+import com.manish.liquidlauncher.model.CustomFolder
 import com.manish.liquidlauncher.model.FolderState
 import com.manish.liquidlauncher.model.LiquidThemeConfig
+import com.manish.liquidlauncher.service.LockAccessibilityService
+import com.manish.liquidlauncher.util.ThemeFromImage
 import com.manish.liquidlauncher.util.drawableToBitmap
 import com.manish.liquidlauncher.util.extractDominantColor
 import kotlinx.coroutines.Dispatchers
@@ -49,11 +52,17 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         private set
     var dockApps by mutableStateOf<List<AppInfo>>(emptyList())
         private set
-    var homeOrder by mutableStateOf(prefs.loadHomeOrder())
-        private set
     var frequentApps by mutableStateOf<List<AppInfo>>(emptyList())
         private set
+    var suggestedApps by mutableStateOf<List<AppInfo>>(emptyList())
+        private set
     var hiddenPackages by mutableStateOf(prefs.loadHidden())
+        private set
+    var distractingPackages by mutableStateOf(prefs.loadDistracting())
+        private set
+    var customFolders by mutableStateOf(prefs.loadFolders())
+        private set
+    var focusMode by mutableStateOf(prefs.focusMode)
         private set
 
     // ---- UI state --------------------------------------------------------------------------
@@ -61,6 +70,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     var isDrawerOpen by mutableStateOf(false)
         private set
     var isThemeEngineOpen by mutableStateOf(false)
+    var idleOpen by mutableStateOf(false)
     var openedFolder by mutableStateOf<FolderState?>(null)
     var menuApp by mutableStateOf<AppInfo?>(null)
     var homeTick by mutableIntStateOf(0)
@@ -188,7 +198,9 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     }
 
     private fun rebuild() {
-        val visible = allApps.filter { it.packageName !in hiddenPackages }
+        val visible = allApps.filter {
+            it.packageName !in hiddenPackages && !(focusMode && it.packageName in distractingPackages)
+        }
         installedApps = visible
         val byPkg = visible.associateBy { it.packageName }
         val dockPackages = storedDock ?: defaultDock(visible)
@@ -197,6 +209,11 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         frequentApps = visible
             .filter { (counts[it.packageName] ?: 0) > 0 }
             .sortedByDescending { counts[it.packageName] ?: 0 }
+            .take(4)
+        val bucketCounts = prefs.bucketCounts(prefs.currentBucket())
+        suggestedApps = visible
+            .filter { (bucketCounts[it.packageName] ?: 0) > 0 }
+            .sortedByDescending { bucketCounts[it.packageName] ?: 0 }
             .take(4)
     }
 
@@ -213,6 +230,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun onHomePressed() {
+        idleOpen = false
         isDrawerOpen = false
         isThemeEngineOpen = false
         openedFolder = null
@@ -223,6 +241,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
 
     fun handleBack() {
         when {
+            idleOpen -> idleOpen = false
             menuApp != null -> menuApp = null
             isThemeEngineOpen -> isThemeEngineOpen = false
             openedFolder != null -> openedFolder = null
@@ -315,21 +334,6 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    // ---- Home layout ----------------------------------------------------------------------
-    fun reorderHomeApps(fromIndex: Int, toIndex: Int, currentPackages: List<String>) {
-        if (fromIndex !in currentPackages.indices || toIndex !in currentPackages.indices || fromIndex == toIndex) return
-        val reordered = currentPackages.toMutableList().apply {
-            add(toIndex, removeAt(fromIndex))
-        }
-        homeOrder = reordered
-        prefs.saveHomeOrder(reordered)
-    }
-
-    fun resetHomeLayout() {
-        homeOrder = emptyList()
-        prefs.saveHomeOrder(emptyList())
-    }
-
     // ---- Dock / hidden ---------------------------------------------------------------------
     fun isInDock(packageName: String): Boolean = dockApps.any { it.packageName == packageName }
 
@@ -360,6 +364,136 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         hiddenPackages = emptySet()
         prefs.saveHidden(hiddenPackages)
         rebuild()
+    }
+
+    // ---- Custom folders --------------------------------------------------------------------
+    fun folderOf(packageName: String): String? =
+        customFolders.firstOrNull { packageName in it.packages }?.name
+
+    private fun setFolders(list: List<CustomFolder>) {
+        customFolders = list.filter { it.packages.isNotEmpty() }
+        prefs.saveFolders(customFolders)
+    }
+
+    fun addToFolder(name: String, target: AppInfo) {
+        val clean = name.trim().take(20)
+        if (clean.isEmpty()) return
+        val updated = customFolders
+            .map { f -> f.copy(packages = f.packages - target.packageName) }
+            .toMutableList()
+        val idx = updated.indexOfFirst { it.name.equals(clean, ignoreCase = true) }
+        if (idx >= 0) {
+            updated[idx] = updated[idx].copy(packages = updated[idx].packages + target.packageName)
+        } else {
+            updated.add(CustomFolder(clean, listOf(target.packageName)))
+        }
+        setFolders(updated)
+        menuApp = null
+    }
+
+    fun removeFromFolder(target: AppInfo) {
+        setFolders(customFolders.map { f -> f.copy(packages = f.packages - target.packageName) })
+        openedFolder = null
+        menuApp = null
+    }
+
+    fun deleteFolder(name: String) {
+        setFolders(customFolders.filter { it.name != name })
+        openedFolder = null
+    }
+
+    // ---- Focus mode ------------------------------------------------------------------------
+    fun isDistracting(packageName: String) = packageName in distractingPackages
+
+    fun toggleDistracting(target: AppInfo) {
+        distractingPackages = if (isDistracting(target.packageName)) {
+            distractingPackages - target.packageName
+        } else {
+            distractingPackages + target.packageName
+        }
+        prefs.saveDistracting(distractingPackages)
+        rebuild()
+        menuApp = null
+    }
+
+    fun toggleFocus() {
+        focusMode = !focusMode
+        prefs.focusMode = focusMode
+        rebuild()
+        val msg = if (focusMode) {
+            if (distractingPackages.isEmpty()) "Focus on - long-press apps to mark them distracting" else "Focus on"
+        } else {
+            "Focus off"
+        }
+        Toast.makeText(app, msg, Toast.LENGTH_SHORT).show()
+    }
+
+    // ---- Lock gesture ----------------------------------------------------------------------
+    fun lockScreen(context: Context) {
+        if (!LockAccessibilityService.lock()) {
+            Toast.makeText(
+                context,
+                "Enable \"Liquid lock\" in Accessibility to use double-tap lock",
+                Toast.LENGTH_LONG
+            ).show()
+            safeStart(context, Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+        }
+    }
+
+    // ---- Backup / restore / wallpaper colours ----------------------------------------------
+    fun exportBackup(context: Context, uri: Uri) {
+        viewModelScope.launch {
+            val ok = withContext(Dispatchers.IO) {
+                try {
+                    context.contentResolver.openOutputStream(uri)?.use {
+                        it.write(prefs.exportJson().toByteArray(Charsets.UTF_8))
+                    }
+                    true
+                } catch (_: Exception) {
+                    false
+                }
+            }
+            Toast.makeText(context, if (ok) "Backup saved" else "Backup failed", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    fun importBackup(context: Context, uri: Uri) {
+        viewModelScope.launch {
+            val ok = withContext(Dispatchers.IO) {
+                try {
+                    val text = context.contentResolver.openInputStream(uri)?.use {
+                        it.readBytes().toString(Charsets.UTF_8)
+                    }
+                    text != null && prefs.importJson(text)
+                } catch (_: Exception) {
+                    false
+                }
+            }
+            if (ok) {
+                themeConfig = prefs.loadTheme()
+                hiddenPackages = prefs.loadHidden()
+                distractingPackages = prefs.loadDistracting()
+                customFolders = prefs.loadFolders()
+                focusMode = prefs.focusMode
+                storedDock = prefs.loadDock()
+                rebuild()
+            }
+            Toast.makeText(context, if (ok) "Backup restored" else "Couldn't read backup", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    fun matchThemeToWallpaper(context: Context) {
+        val uri = customWallpaperUri ?: return
+        viewModelScope.launch {
+            val hues = withContext(Dispatchers.Default) {
+                ThemeFromImage.decode(context, uri)?.let { ThemeFromImage.extractHues(it) }
+            }
+            if (hues != null) {
+                updateTheme(themeConfig.copy(accentHue = hues.first, secondaryHue = hues.second))
+            } else {
+                Toast.makeText(context, "Couldn't read wallpaper colours", Toast.LENGTH_SHORT).show()
+            }
+        }
     }
 
     // ---- Theme / wallpaper -----------------------------------------------------------------

@@ -12,8 +12,8 @@ import androidx.compose.animation.core.spring
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
-import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -37,11 +37,13 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.AccessTime
 import androidx.compose.material.icons.rounded.Bluetooth
-import androidx.compose.material.icons.rounded.Edit
-import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.FlashlightOff
 import androidx.compose.material.icons.rounded.FlashlightOn
+import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material.icons.rounded.NightsStay
+import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.SwapHoriz
@@ -84,11 +86,15 @@ import com.manish.liquidlauncher.ui.components.LiquidAppIconItem
 import com.manish.liquidlauncher.ui.components.LiquidFolderItem
 import com.manish.liquidlauncher.ui.components.LiquidGlassSurface
 import com.manish.liquidlauncher.ui.components.LiquidWallpaper
+import com.manish.liquidlauncher.ui.components.MusicWidget
+import com.manish.liquidlauncher.ui.components.SkyWidget
 import com.manish.liquidlauncher.ui.components.QuickTile
 import com.manish.liquidlauncher.ui.components.SectionTitle
 import com.manish.liquidlauncher.ui.components.accentColor
 import com.manish.liquidlauncher.ui.components.jellyTouch
 import com.manish.liquidlauncher.ui.components.rememberBatteryInfo
+import com.manish.liquidlauncher.notifications.NotificationHub
+import com.manish.liquidlauncher.util.SoundFx
 import com.manish.liquidlauncher.viewmodel.LauncherViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -116,7 +122,7 @@ fun HomeScreen(
     val config = viewModel.themeConfig
     val accent = config.accentColor()
     val battery by rememberBatteryInfo()
-    var layoutEditMode by remember { mutableStateOf(false) }
+    var firstPage by remember { mutableStateOf(true) }
 
     // Page 0 = dashboard, page 1 = home, page 2+ = extra app pages (count is computed from screen size)
     var totalPages by remember { mutableIntStateOf(2) }
@@ -125,38 +131,54 @@ fun HomeScreen(
     val onLaunch: (AppInfo) -> Unit = { viewModel.launchApp(context, view, it) }
     val onMenu: (AppInfo) -> Unit = { viewModel.menuApp = it }
 
+    LaunchedEffect(pagerState.currentPage) {
+        if (firstPage) firstPage = false else SoundFx.play(SoundFx.SWISH)
+    }
+
     // Home key / returning to launcher: close everything and glide back to the main page
     LaunchedEffect(viewModel.homeTick) {
         if (viewModel.homeTick > 0) pagerState.animateScrollToPage(1)
     }
 
     // Apps already in the dock are not repeated on the home grid
-    val homeApps = remember(viewModel.installedApps, viewModel.dockApps) {
-        val dock = viewModel.dockApps.map { it.packageName }.toSet()
-        viewModel.installedApps.filter { it.packageName !in dock }
+    val customStates = remember(viewModel.customFolders, viewModel.installedApps) {
+        val byPkg = viewModel.installedApps.associateBy { it.packageName }
+        viewModel.customFolders.mapNotNull { cf ->
+            val apps = cf.packages.mapNotNull { byPkg[it] }
+            if (apps.isEmpty()) null else FolderState(cf.name, apps)
+        }
     }
-    val folders = remember(homeApps) {
+    val homeApps = remember(viewModel.installedApps, viewModel.dockApps, customStates) {
+        val dock = viewModel.dockApps.map { it.packageName }.toSet()
+        val custom = customStates.flatMap { f -> f.apps.map { it.packageName } }.toSet()
+        viewModel.installedApps.filter { it.packageName !in dock && it.packageName !in custom }
+    }
+    val folders = remember(homeApps, customStates) {
         val social = homeApps.filter { a -> SocialKeys.any { a.packageName.contains(it) } }
         val socialSet = social.map { it.packageName }.toSet()
         val google = homeApps.filter { a ->
             a.packageName !in socialSet && GoogleKeys.any { a.packageName.contains(it) }
         }
-        listOfNotNull(
+        customStates + listOfNotNull(
             if (social.size >= 2) FolderState("Social", social) else null,
             if (google.size >= 2) FolderState("Google", google) else null
         )
     }
-    val looseApps = remember(homeApps, folders, viewModel.homeOrder) {
+    val looseApps = remember(homeApps, folders) {
         val inFolders = folders.flatMap { f -> f.apps.map { it.packageName } }.toSet()
-        val available = homeApps.filter { it.packageName !in inFolders }
-        val byPackage = available.associateBy { it.packageName }
-        val saved = viewModel.homeOrder.mapNotNull { byPackage[it] }
-        saved + available.filter { it.packageName !in viewModel.homeOrder.toSet() }
+        homeApps.filter { it.packageName !in inFolders }
     }
 
     Box(
         modifier = Modifier
             .fillMaxSize()
+            .pointerInput(Unit) {
+                // Empty-space gestures: double-tap = lock screen, long-press = theme engine
+                detectTapGestures(
+                    onDoubleTap = { viewModel.lockScreen(context) },
+                    onLongPress = { viewModel.isThemeEngineOpen = true }
+                )
+            }
             .pointerInput(Unit) {
                 var total = 0f
                 detectVerticalDragGestures(
@@ -233,22 +255,6 @@ fun HomeScreen(
                 GlassIconButton(Icons.Rounded.Tune, "Theme Engine", config, tint = accent) {
                     viewModel.isThemeEngineOpen = true
                 }
-                GlassIconButton(
-                    icon = if (layoutEditMode) Icons.Rounded.Check else Icons.Rounded.Edit,
-                    contentDescription = if (layoutEditMode) "Finish layout editing" else "Edit home layout",
-                    config = config,
-                    tint = if (layoutEditMode) accent else Color.White
-                ) { layoutEditMode = !layoutEditMode }
-            }
-
-            if (layoutEditMode) {
-                Text(
-                    text = "LAYOUT EDITOR  •  Long-press an app, then drag to reposition",
-                    color = Color.White.copy(alpha = 0.88f),
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.padding(top = 6.dp, start = 4.dp)
-                )
             }
 
             // ---- Pager --------------------------------------------------------------------
@@ -316,12 +322,7 @@ fun HomeScreen(
                                     rows = rowsFirst,
                                     config = config,
                                     animateIn = true,
-                                    editMode = layoutEditMode,
-                                    appIndexOffset = 0,
-                                    cellWidth = maxWidth / GRID_COLUMNS,
-                                    cellHeight = cellHeight + rowGap,
                                     onFolder = { viewModel.openedFolder = it },
-                                    onMoveApp = { from, to, packages -> viewModel.reorderHomeApps(from, to, looseApps.map { it.packageName }) },
                                     onLaunch = onLaunch,
                                     onMenu = onMenu
                                 )
@@ -331,12 +332,7 @@ fun HomeScreen(
                                 rows = rowsFull,
                                 config = config,
                                 animateIn = false,
-                                editMode = layoutEditMode,
-                                appIndexOffset = firstPageApps.size + (page - 2) * rowsFull * GRID_COLUMNS,
-                                cellWidth = maxWidth / GRID_COLUMNS,
-                                cellHeight = cellHeight + rowGap,
                                 onFolder = { viewModel.openedFolder = it },
-                                onMoveApp = { from, to, packages -> viewModel.reorderHomeApps(from, to, looseApps.map { it.packageName }) },
                                 onLaunch = onLaunch,
                                 onMenu = onMenu
                             )
@@ -407,7 +403,6 @@ private fun rowsThatFit(available: Dp, cell: Dp, gap: Dp): Int =
     (((available + gap) / (cell + gap)).toInt()).coerceIn(1, 8)
 
 /** Adjacent pages tilt and fade like glass panes. */
-@OptIn(ExperimentalFoundationApi::class)
 private fun Modifier.pageTransform(state: PagerState, page: Int): Modifier = graphicsLayer {
     val signed = (page - state.currentPage) - state.currentPageOffsetFraction
     val distance = abs(signed).coerceIn(0f, 1f)
@@ -427,16 +422,10 @@ private fun CellGrid(
     rows: Int,
     config: LiquidThemeConfig,
     animateIn: Boolean,
-    editMode: Boolean,
-    appIndexOffset: Int,
-    cellWidth: Dp,
-    cellHeight: Dp,
     onFolder: (FolderState) -> Unit,
-    onMoveApp: (Int, Int, List<String>) -> Unit,
     onLaunch: (AppInfo) -> Unit,
     onMenu: (AppInfo) -> Unit
 ) {
-    val appPackages = remember(cells) { cells.filterIsInstance<HomeCell.AppCell>().map { it.app.packageName } }
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(14.dp)
@@ -446,41 +435,8 @@ private fun CellGrid(
                 for (c in 0 until GRID_COLUMNS) {
                     val index = r * GRID_COLUMNS + c
                     val cell = cells.getOrNull(index)
-                    val appIndex = when (cell) {
-                        is HomeCell.AppCell -> appIndexOffset + index - cells.indexOfFirst { it is HomeCell.AppCell }
-                        else -> -1
-                    }
-                    var dragX by remember(cell) { mutableStateOf(0f) }
-                    var dragY by remember(cell) { mutableStateOf(0f) }
                     Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(cellHeight)
-                            .graphicsLayer { translationX = dragX; translationY = dragY; scaleX = if (dragX != 0f || dragY != 0f) 1.06f else 1f; scaleY = if (dragX != 0f || dragY != 0f) 1.06f else 1f }
-                            .then(if (editMode && appIndex >= 0) Modifier.pointerInput(appIndex, appPackages, cellWidth, cellHeight) {
-                                var totalX = 0f
-                                var totalY = 0f
-                                detectDragGesturesAfterLongPress(
-                                    onDrag = { change, amount ->
-                                        change.consume()
-                                        totalX += amount.x
-                                        totalY += amount.y
-                                        dragX = totalX
-                                        dragY = totalY
-                                    },
-                                    onDragEnd = {
-                                        val colShift = (totalX / cellWidth.toPx()).toInt()
-                                        val rowShift = (totalY / cellHeight.toPx()).toInt()
-                                        val localStart = index - cells.indexOfFirst { it is HomeCell.AppCell }
-                                        val localTarget = (localStart + rowShift * GRID_COLUMNS + colShift).coerceIn(0, appPackages.lastIndex)
-                                        val fromGlobal = appIndexOffset + localStart
-                                        val toGlobal = appIndexOffset + localTarget
-                                        if (localStart != localTarget) onMoveApp(fromGlobal, toGlobal, appPackages)
-                                        dragX = 0f; dragY = 0f; totalX = 0f; totalY = 0f
-                                    },
-                                    onDragCancel = { dragX = 0f; dragY = 0f; totalX = 0f; totalY = 0f }
-                                )
-                            } else Modifier),
+                        modifier = Modifier.weight(1f),
                         contentAlignment = Alignment.TopCenter
                     ) {
                         when (cell) {
@@ -544,6 +500,7 @@ private fun DashboardPage(
 ) {
     val context = LocalContext.current
     val accent = config.accentColor()
+    val alertsOn by NotificationHub.connected
     var memory by remember { mutableStateOf(readMemory(context)) }
     var storage by remember { mutableStateOf(readStorage()) }
 
@@ -567,6 +524,16 @@ private fun DashboardPage(
             fontFamily = FontFamily.SansSerif,
             fontSize = 24.sp,
             fontWeight = FontWeight.Bold
+        )
+
+        MusicWidget(
+            config = config,
+            onEnableAccess = {
+                viewModel.openSettingsScreen(context, Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(96.dp)
         )
 
         Row(
@@ -595,6 +562,13 @@ private fun DashboardPage(
             )
         }
 
+        SkyWidget(
+            config = config,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(110.dp)
+        )
+
         SectionTitle("Quick tiles", accent)
         Row(
             modifier = Modifier
@@ -622,29 +596,61 @@ private fun DashboardPage(
                 viewModel.openSettingsScreen(context, Settings.ACTION_SETTINGS)
             }
         }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(78.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            QuickTile(Icons.Rounded.NightsStay, "Focus", viewModel.focusMode, config, Modifier.weight(1f).fillMaxHeight()) {
+                viewModel.toggleFocus()
+            }
+            QuickTile(Icons.Rounded.AccessTime, "Idle", false, config, Modifier.weight(1f).fillMaxHeight()) {
+                viewModel.idleOpen = true
+            }
+            QuickTile(Icons.Rounded.Lock, "Lock", false, config, Modifier.weight(1f).fillMaxHeight()) {
+                viewModel.lockScreen(context)
+            }
+            QuickTile(Icons.Rounded.Notifications, "Alerts", alertsOn, config, Modifier.weight(1f).fillMaxHeight()) {
+                viewModel.openSettingsScreen(context, Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
+            }
+        }
 
-        SectionTitle("Frequently used", accent)
-        if (viewModel.frequentApps.isEmpty()) {
-            Text(
-                text = "Apps you open often will float up here.",
-                color = Color.White.copy(alpha = 0.6f),
-                fontFamily = FontFamily.SansSerif,
-                fontSize = 12.sp
-            )
-        } else {
-            Row(modifier = Modifier.fillMaxWidth()) {
-                for (i in 0 until 4) {
-                    Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.TopCenter) {
-                        val app = viewModel.frequentApps.getOrNull(i)
-                        if (app != null) {
-                            LiquidAppIconItem(
-                                app = app,
-                                config = config,
-                                bob = config.iconBob,
-                                onLongClick = { onMenu(app) },
-                                onClick = { onLaunch(app) }
-                            )
-                        }
+        AppsRow("Suggested right now", viewModel.suggestedApps, "Open apps for a few days and the ones you use at this time of day appear here.", config, onLaunch, onMenu)
+        AppsRow("Frequently used", viewModel.frequentApps, "Apps you open often will float up here.", config, onLaunch, onMenu)
+    }
+}
+
+@Composable
+private fun AppsRow(
+    title: String,
+    apps: List<AppInfo>,
+    emptyText: String,
+    config: LiquidThemeConfig,
+    onLaunch: (AppInfo) -> Unit,
+    onMenu: (AppInfo) -> Unit
+) {
+    SectionTitle(title, config.accentColor())
+    if (apps.isEmpty()) {
+        Text(
+            text = emptyText,
+            color = Color.White.copy(alpha = 0.6f),
+            fontFamily = FontFamily.SansSerif,
+            fontSize = 12.sp
+        )
+    } else {
+        Row(modifier = Modifier.fillMaxWidth()) {
+            for (i in 0 until 4) {
+                Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.TopCenter) {
+                    val app = apps.getOrNull(i)
+                    if (app != null) {
+                        LiquidAppIconItem(
+                            app = app,
+                            config = config,
+                            bob = config.iconBob,
+                            onLongClick = { onMenu(app) },
+                            onClick = { onLaunch(app) }
+                        )
                     }
                 }
             }

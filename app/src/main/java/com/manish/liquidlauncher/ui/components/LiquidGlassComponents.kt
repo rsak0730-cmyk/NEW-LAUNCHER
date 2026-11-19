@@ -64,7 +64,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.ui.graphics.Shape
 import com.manish.liquidlauncher.model.AppInfo
+import com.manish.liquidlauncher.model.IconShapeStyle
+import com.manish.liquidlauncher.notifications.NotificationHub
+import com.manish.liquidlauncher.util.SoundFx
 import com.manish.liquidlauncher.model.LiquidThemeConfig
 import kotlinx.coroutines.delay
 import kotlin.math.min
@@ -117,7 +122,10 @@ fun Modifier.jellyTouch(
                         long()
                     }
                 },
-                onTap = { clickState.value() }
+                onTap = {
+                    SoundFx.play(SoundFx.POP)
+                    clickState.value()
+                }
             )
         }
         .graphicsLayer {
@@ -149,10 +157,10 @@ fun LiquidGlassSurface(
     Box(
         modifier = modifier
             .shadow(
-                elevation = 7.dp,
+                elevation = 12.dp,
                 shape = shape,
-                ambientColor = accent.copy(alpha = 0.22f),
-                spotColor = accent.copy(alpha = 0.28f)
+                ambientColor = accent.copy(alpha = 0.45f),
+                spotColor = accent.copy(alpha = 0.60f)
             )
             .clip(shape)
             .drawWithCache {
@@ -372,7 +380,40 @@ fun LiquidSwitch(
     }
 }
 
-/** Bubbly glass app icon: glow halo, jelly press, pop-in, idle bob and gyro-driven highlight. */
+fun iconShapeFor(style: IconShapeStyle, size: Dp): Shape = when (style) {
+    IconShapeStyle.Squircle -> RoundedCornerShape((size.value * 0.34f).dp)
+    IconShapeStyle.Circle -> CircleShape
+    IconShapeStyle.Teardrop -> RoundedCornerShape(
+        topStartPercent = 50, topEndPercent = 50, bottomEndPercent = 12, bottomStartPercent = 50
+    )
+    IconShapeStyle.Square -> RoundedCornerShape((size.value * 0.14f).dp)
+}
+
+/** Red glass count bubble used for notification badges. */
+@Composable
+fun CountBadge(count: Int, modifier: Modifier = Modifier) {
+    val label = if (count > 99) "99+" else count.toString()
+    Box(
+        modifier = modifier
+            .popIn()
+            .defaultMinSize(minWidth = 18.dp, minHeight = 18.dp)
+            .clip(CircleShape)
+            .background(Brush.verticalGradient(listOf(Color(0xFFFF8A80), Color(0xFFFF1744))))
+            .border(1.dp, Color.White.copy(alpha = 0.85f), CircleShape)
+            .padding(horizontal = 5.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = label,
+            color = Color.White,
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1
+        )
+    }
+}
+
+/** Bubbly glass app icon: glow halo, jelly press, pop-in, idle bob, tilt highlight, badges, shapes. */
 @Composable
 fun LiquidAppIconItem(
     app: AppInfo,
@@ -388,8 +429,11 @@ fun LiquidAppIconItem(
     val clock = LocalAnimClock.current
     val tilt = LocalTilt.current
     val tint = app.tint
-    val shape = RoundedCornerShape((iconBoxSize.value * 0.34f).dp)
+    val style = config.iconShape
+    val shape = iconShapeFor(style, iconBoxSize)
     val phase = remember(app.packageName) { (app.packageName.hashCode() and 0xFFFF) / 10000f }
+    val counts by NotificationHub.counts
+    val badge = if (config.badges) (counts[app.packageName] ?: 0) else 0
 
     val appear = remember { Animatable(if (entranceIndex < 0) 1f else 0f) }
     LaunchedEffect(app.packageName) {
@@ -414,106 +458,105 @@ fun LiquidAppIconItem(
             }
             .padding(2.dp)
     ) {
-        Box(
-            modifier = Modifier
-                .size(iconBoxSize)
-                .drawBehind {
-                    // One contained soft halo replaces three oversized outlines.
-                    // This prevents clipped/stacked rings around icons and reduces overdraw.
-                    val radius = size.minDimension * 0.72f
-                    drawCircle(
-                        brush = Brush.radialGradient(
-                            colors = listOf(
-                                tint.copy(alpha = 0.16f),
-                                tint.copy(alpha = 0.045f),
-                                Color.Transparent
-                            ),
-                            center = Offset(size.width / 2f, size.height / 0.9f),
-                            radius = radius
-                        ),
-                        radius = radius,
-                        center = Offset(size.width / 2f, size.height / 2f)
-                    )
-                }
-                .clip(shape)
-                .drawWithCache {
-                    val w = size.width
-                    val h = size.height
-                    val sw = 1.25.dp.toPx()
-                    val cr = w * 0.34f
-                    val base = Brush.radialGradient(
-                        colors = listOf(
-                            tint.copy(alpha = 0.50f),
-                            Color(0xFF0A1322).copy(alpha = 0.82f),
-                            tint.copy(alpha = 0.58f)
-                        ),
-                        center = Offset(w * 0.3f, h * 0.25f),
-                        radius = w * 1.2f
-                    )
-                    val rim = Brush.linearGradient(
-                        colors = listOf(
-                            Color.White.copy(alpha = 0.85f),
-                            tint.copy(alpha = 0.65f),
-                            Color.White.copy(alpha = 0.12f),
-                            tint.copy(alpha = 0.75f)
-                        ),
-                        start = Offset.Zero,
-                        end = Offset(w, h)
-                    )
-                    val gloss = Path().apply {
-                        moveTo(0f, 0f)
-                        lineTo(w, 0f)
-                        lineTo(w, h * 0.30f)
-                        quadraticBezierTo(w * 0.5f, h * 0.14f, 0f, h * 0.40f)
-                        close()
-                    }
-                    val glossBrush = Brush.verticalGradient(
-                        colors = listOf(Color.White.copy(alpha = 0.34f), Color.Transparent),
-                        startY = 0f,
-                        endY = h * 0.45f
-                    )
-                    val caustic = Brush.verticalGradient(
-                        colors = listOf(Color.Transparent, Color.White.copy(alpha = 0.18f)),
-                        startY = h * 0.62f,
-                        endY = h
-                    )
-                    val dotRadius = w * 0.13f
-                    val dot = Brush.radialGradient(
-                        colors = listOf(Color.White.copy(alpha = 0.95f), Color.Transparent),
-                        center = Offset.Zero,
-                        radius = dotRadius
-                    )
-
-                    onDrawWithContent {
-                        drawRect(base)
-                        drawContent()
-                        drawPath(gloss, glossBrush)
-                        drawRect(caustic)
-                        // Bubble highlight that slides with device tilt
-                        translate(
-                            left = w * 0.27f + tilt.value.x * w * 0.10f,
-                            top = h * 0.21f + tilt.value.y * h * 0.08f
-                        ) {
-                            drawCircle(brush = dot, radius = dotRadius, center = Offset.Zero)
-                        }
-                        drawRoundRect(
-                            brush = rim,
-                            topLeft = Offset(sw / 2f, sw / 2f),
-                            size = Size(w - sw, h - sw),
-                            cornerRadius = CornerRadius(cr - sw / 2f),
-                            style = Stroke(width = sw)
-                        )
-                    }
-                },
-            contentAlignment = Alignment.Center
-        ) {
-            Image(
-                bitmap = app.icon,
-                contentDescription = app.label,
+        Box(modifier = Modifier.size(iconBoxSize)) {
+            Box(
                 modifier = Modifier
-                    .size(iconBoxSize * 0.62f)
-                    .clip(RoundedCornerShape(iconBoxSize * 0.2f))
-            )
+                    .fillMaxSize()
+                    .drawBehind {
+                        // Cheap layered halo instead of an expensive coloured shadow per icon
+                        val r = if (style == IconShapeStyle.Circle) size.minDimension / 2f else size.minDimension * 0.34f
+                        for (i in 1..3) {
+                            val grow = i * 3.dp.toPx()
+                            drawRoundRect(
+                                color = tint.copy(alpha = 0.13f / i),
+                                topLeft = Offset(-grow, -grow + 4.dp.toPx()),
+                                size = Size(size.width + grow * 2f, size.height + grow * 2f),
+                                cornerRadius = CornerRadius(r + grow)
+                            )
+                        }
+                    }
+                    .clip(shape)
+                    .drawWithCache {
+                        val w = size.width
+                        val h = size.height
+                        val sw = 1.25.dp.toPx()
+                        val outline = shape.createOutline(size, layoutDirection, this)
+                        val base = Brush.radialGradient(
+                            colors = listOf(
+                                tint.copy(alpha = 0.50f),
+                                Color(0xFF0A1322).copy(alpha = 0.82f),
+                                tint.copy(alpha = 0.58f)
+                            ),
+                            center = Offset(w * 0.3f, h * 0.25f),
+                            radius = w * 1.2f
+                        )
+                        val rim = Brush.linearGradient(
+                            colors = listOf(
+                                Color.White.copy(alpha = 0.85f),
+                                tint.copy(alpha = 0.65f),
+                                Color.White.copy(alpha = 0.12f),
+                                tint.copy(alpha = 0.75f)
+                            ),
+                            start = Offset.Zero,
+                            end = Offset(w, h)
+                        )
+                        val gloss = Path().apply {
+                            moveTo(0f, 0f)
+                            lineTo(w, 0f)
+                            lineTo(w, h * 0.30f)
+                            quadraticBezierTo(w * 0.5f, h * 0.14f, 0f, h * 0.40f)
+                            close()
+                        }
+                        val glossBrush = Brush.verticalGradient(
+                            colors = listOf(Color.White.copy(alpha = 0.34f), Color.Transparent),
+                            startY = 0f,
+                            endY = h * 0.45f
+                        )
+                        val caustic = Brush.verticalGradient(
+                            colors = listOf(Color.Transparent, Color.White.copy(alpha = 0.18f)),
+                            startY = h * 0.62f,
+                            endY = h
+                        )
+                        val dotRadius = w * 0.13f
+                        val dot = Brush.radialGradient(
+                            colors = listOf(Color.White.copy(alpha = 0.95f), Color.Transparent),
+                            center = Offset.Zero,
+                            radius = dotRadius
+                        )
+
+                        onDrawWithContent {
+                            drawRect(base)
+                            drawContent()
+                            drawPath(gloss, glossBrush)
+                            drawRect(caustic)
+                            // Bubble highlight that slides with device tilt
+                            translate(
+                                left = w * 0.27f + tilt.value.x * w * 0.10f,
+                                top = h * 0.21f + tilt.value.y * h * 0.08f
+                            ) {
+                                drawCircle(brush = dot, radius = dotRadius, center = Offset.Zero)
+                            }
+                            drawOutline(outline = outline, brush = rim, style = Stroke(width = sw))
+                        }
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                Image(
+                    bitmap = app.icon,
+                    contentDescription = app.label,
+                    modifier = Modifier
+                        .size(iconBoxSize * 0.62f)
+                        .clip(RoundedCornerShape(iconBoxSize * 0.2f))
+                )
+            }
+            if (badge > 0) {
+                CountBadge(
+                    count = badge,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .offset(x = 5.dp, y = (-5).dp)
+                )
+            }
         }
 
         if (showLabel) {
@@ -544,6 +587,8 @@ fun LiquidFolderItem(
     val accent = config.accentColor()
     val boxSize = (60f * config.iconScale).dp
     val mini = boxSize * 0.32f
+    val counts by NotificationHub.counts
+    val badge = if (config.badges) apps.sumOf { counts[it.packageName] ?: 0 } else 0
 
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -551,37 +596,47 @@ fun LiquidFolderItem(
             .jellyTouch(haptics = config.haptics, onClick = onClick)
             .padding(2.dp)
     ) {
-        LiquidGlassSurface(
-            config = config,
-            cornerRadius = (boxSize.value * 0.35f).dp,
-            tintOverride = accent,
-            modifier = Modifier.size(boxSize)
-        ) {
-            Column(
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .padding(2.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
+        Box(modifier = Modifier.size(boxSize)) {
+            LiquidGlassSurface(
+                config = config,
+                cornerRadius = (boxSize.value * 0.35f).dp,
+                tintOverride = accent,
+                modifier = Modifier.size(boxSize)
             ) {
-                val preview = apps.take(4)
-                for (row in 0..1) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        for (col in 0..1) {
-                            val idx = row * 2 + col
-                            if (idx < preview.size) {
-                                Image(
-                                    bitmap = preview[idx].icon,
-                                    contentDescription = null,
-                                    modifier = Modifier
-                                        .size(mini)
-                                        .clip(RoundedCornerShape(mini * 0.3f))
-                                )
-                            } else {
-                                Spacer(modifier = Modifier.size(mini))
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .padding(2.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    val preview = apps.take(4)
+                    for (row in 0..1) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            for (col in 0..1) {
+                                val idx = row * 2 + col
+                                if (idx < preview.size) {
+                                    Image(
+                                        bitmap = preview[idx].icon,
+                                        contentDescription = null,
+                                        modifier = Modifier
+                                            .size(mini)
+                                            .clip(RoundedCornerShape(mini * 0.3f))
+                                    )
+                                } else {
+                                    Spacer(modifier = Modifier.size(mini))
+                                }
                             }
                         }
                     }
                 }
+            }
+            if (badge > 0) {
+                CountBadge(
+                    count = badge,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .offset(x = 5.dp, y = (-5).dp)
+                )
             }
         }
         if (config.showLabels) {

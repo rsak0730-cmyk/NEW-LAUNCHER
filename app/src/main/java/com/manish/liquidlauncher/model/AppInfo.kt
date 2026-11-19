@@ -34,7 +34,24 @@ data class LiquidThemeConfig(
     val tiltEffects: Boolean = true,      // Gyro-driven glare + parallax
     val showLabels: Boolean = true,
     val haptics: Boolean = true,
-    val blurDrawer: Boolean = true        // Blur the home screen behind the drawer (Android 12+)
+    val blurDrawer: Boolean = true,       // Blur the home screen behind the drawer (Android 12+)
+    val iconShape: IconShapeStyle = IconShapeStyle.Squircle,
+    val sounds: Boolean = true,           // Soft water-drop sounds
+    val badges: Boolean = true            // Notification count bubbles (needs notification access)
+)
+
+enum class IconShapeStyle(val label: String) {
+    Squircle("Squircle"),
+    Circle("Circle"),
+    Teardrop("Drop"),
+    Square("Square")
+}
+
+/** User-made home folder (apps referenced by package name). */
+@Immutable
+data class CustomFolder(
+    val name: String,
+    val packages: List<String>
 )
 
 data class ThemePreset(

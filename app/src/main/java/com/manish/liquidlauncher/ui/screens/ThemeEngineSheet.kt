@@ -29,15 +29,20 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material.icons.rounded.Notifications
+import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.SwapHoriz
 import androidx.compose.material.icons.rounded.Visibility
 import androidx.compose.material.icons.rounded.Wallpaper
+import android.provider.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -49,7 +54,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.manish.liquidlauncher.model.IconShapeStyle
 import com.manish.liquidlauncher.model.LiquidThemeConfig
+import com.manish.liquidlauncher.notifications.NotificationHub
 import com.manish.liquidlauncher.model.ThemePresets
 import com.manish.liquidlauncher.ui.components.GlassButton
 import com.manish.liquidlauncher.ui.components.LiquidGlassSurface
@@ -61,8 +68,14 @@ import com.manish.liquidlauncher.viewmodel.LauncherViewModel
 import kotlin.math.abs
 
 @Composable
-fun ThemeEngineSheet(viewModel: LauncherViewModel, onPickWallpaper: () -> Unit) {
+fun ThemeEngineSheet(
+    viewModel: LauncherViewModel,
+    onPickWallpaper: () -> Unit,
+    onExport: () -> Unit,
+    onImport: () -> Unit
+) {
     val context = LocalContext.current
+    val alertsOn by NotificationHub.connected
     val config = viewModel.themeConfig
     val accent = config.accentColor()
     val maxHeight = (LocalConfiguration.current.screenHeightDp * 0.8f).dp
@@ -190,6 +203,21 @@ fun ThemeEngineSheet(viewModel: LauncherViewModel, onPickWallpaper: () -> Unit) 
                             viewModel.updateTheme(config.copy(iconScale = it))
                         }
 
+                        Label("Icon shape")
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            IconShapeStyle.values().forEach { style ->
+                                GlassButton(
+                                    text = style.label,
+                                    config = config,
+                                    modifier = Modifier.weight(1f),
+                                    tint = if (config.iconShape == style) accent else null
+                                ) { viewModel.updateTheme(config.copy(iconShape = style)) }
+                            }
+                        }
+
                         Label("Effects")
                         ToggleRow("Live animations", config.liveAnimations, accent) {
                             viewModel.updateTheme(config.copy(liveAnimations = it))
@@ -212,6 +240,12 @@ fun ThemeEngineSheet(viewModel: LauncherViewModel, onPickWallpaper: () -> Unit) 
                         ToggleRow("Blur behind drawer", config.blurDrawer, accent) {
                             viewModel.updateTheme(config.copy(blurDrawer = it))
                         }
+                        ToggleRow("Water-drop sounds", config.sounds, accent) {
+                            viewModel.updateTheme(config.copy(sounds = it))
+                        }
+                        ToggleRow("Notification badges", config.badges, accent) {
+                            viewModel.updateTheme(config.copy(badges = it))
+                        }
 
                         Label("Wallpaper & system")
                         GlassButton("Choose wallpaper", config, Modifier.fillMaxWidth(), Icons.Rounded.Wallpaper, onClick = onPickWallpaper)
@@ -225,6 +259,27 @@ fun ThemeEngineSheet(viewModel: LauncherViewModel, onPickWallpaper: () -> Unit) 
                                 "Restore ${viewModel.hiddenPackages.size} hidden apps",
                                 config, Modifier.fillMaxWidth(), Icons.Rounded.Visibility
                             ) { viewModel.restoreHiddenApps() }
+                        }
+                        if (viewModel.customWallpaperUri != null) {
+                            GlassButton("Match theme to wallpaper", config, Modifier.fillMaxWidth(), Icons.Rounded.Palette) {
+                                viewModel.matchThemeToWallpaper(context)
+                            }
+                        }
+                        if (!alertsOn) {
+                            GlassButton("Enable badges & music (notification access)", config, Modifier.fillMaxWidth(), Icons.Rounded.Notifications) {
+                                viewModel.openSettingsScreen(context, Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
+                            }
+                        }
+                        GlassButton("Enable double-tap lock (Accessibility)", config, Modifier.fillMaxWidth(), Icons.Rounded.Lock) {
+                            viewModel.openSettingsScreen(context, Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                        }
+                        Label("Backup")
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            GlassButton("Export", config, Modifier.weight(1f), onClick = onExport)
+                            GlassButton("Restore", config, Modifier.weight(1f), onClick = onImport)
                         }
                         GlassButton("Set as default launcher", config, Modifier.fillMaxWidth(), Icons.Rounded.SwapHoriz) {
                             viewModel.openDefaultLauncherPicker(context)
