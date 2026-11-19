@@ -50,6 +50,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.translate
@@ -457,7 +458,7 @@ fun LiquidAppIconItem(
                             translate(left = w * 0.27f + tilt.value.x * w * 0.10f, top = h * 0.21f + tilt.value.y * h * 0.08f) {
                                 drawCircle(brush = dot, radius = dotRadius, center = Offset.Zero)
                             }
-                            drawOutline(outline = outline, brush = rim, style = Stroke(width = sw))
+                            drawOutline(outline, rim, 1f, Stroke(width = sw))
                         }
                     },
                 contentAlignment = Alignment.Center
