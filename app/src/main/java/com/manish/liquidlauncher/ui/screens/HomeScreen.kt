@@ -224,7 +224,14 @@ fun HomeScreen(viewModel: LauncherViewModel, onPickWallpaper: () -> Unit) {
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                LiquidGlassSurface(config = config, cornerRadius = 50.dp, modifier = Modifier.weight(1f).height(46.dp).jellyTouch(haptics = config.haptics, pressX = 0.97f, pressY = 0.92f) { viewModel.openSearch(context) }) {
+                LiquidGlassSurface(
+                    config = config,
+                    cornerRadius = 50.dp,
+                    modifier = Modifier.weight(1f).height(46.dp).jellyTouch(haptics = config.haptics, pressX = 0.97f, pressY = 0.92f) {
+                        viewModel.searchQuery = ""
+                        viewModel.openDrawer()
+                    }
+                ) {
                     Row(modifier = Modifier.fillMaxSize().padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(imageVector = Icons.Rounded.Search, contentDescription = "Search", tint = accent, modifier = Modifier.width(18.dp))
                         Spacer(modifier = Modifier.width(8.dp))
