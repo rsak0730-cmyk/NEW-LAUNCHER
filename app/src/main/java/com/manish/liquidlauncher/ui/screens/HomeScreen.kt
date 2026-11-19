@@ -1,3 +1,4 @@
+```kotlin
 package com.manish.liquidlauncher.ui.screens
 
 import android.app.ActivityManager
@@ -403,6 +404,7 @@ private fun rowsThatFit(available: Dp, cell: Dp, gap: Dp): Int =
     (((available + gap) / (cell + gap)).toInt()).coerceIn(1, 8)
 
 /** Adjacent pages tilt and fade like glass panes. */
+@OptIn(ExperimentalFoundationApi::class)
 private fun Modifier.pageTransform(state: PagerState, page: Int): Modifier = graphicsLayer {
     val signed = (page - state.currentPage) - state.currentPageOffsetFraction
     val distance = abs(signed).coerceIn(0f, 1f)
@@ -657,3 +659,4 @@ private fun AppsRow(
         }
     }
 }
+```
