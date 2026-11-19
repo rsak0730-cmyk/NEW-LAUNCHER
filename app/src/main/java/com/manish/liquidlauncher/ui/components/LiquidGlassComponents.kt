@@ -458,7 +458,7 @@ fun LiquidAppIconItem(
                             translate(left = w * 0.27f + tilt.value.x * w * 0.10f, top = h * 0.21f + tilt.value.y * h * 0.08f) {
                                 drawCircle(brush = dot, radius = dotRadius, center = Offset.Zero)
                             }
-                            drawOutline(outline, rim, 1f, Stroke(width = sw))
+                            drawOutline(outline, rim, style = Stroke(width = sw))
                         }
                     },
                 contentAlignment = Alignment.Center
