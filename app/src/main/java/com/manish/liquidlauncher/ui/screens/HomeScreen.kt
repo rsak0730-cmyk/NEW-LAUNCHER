@@ -51,6 +51,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -223,7 +224,7 @@ fun HomeScreen(viewModel: LauncherViewModel, onPickWallpaper: () -> Unit) {
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                LiquidGlassSurface(config = config, cornerRadius = 50.dp, modifier = Modifier.weight(1f).height(46.dp).jellyTouch(haptics = config.haptics, pressX = 0.97f, pressY = 0.92f) { viewModel.openDrawer() }) {
+                LiquidGlassSurface(config = config, cornerRadius = 50.dp, modifier = Modifier.weight(1f).height(46.dp).jellyTouch(haptics = config.haptics, pressX = 0.97f, pressY = 0.92f) { viewModel.openSearch(context) }) {
                     Row(modifier = Modifier.fillMaxSize().padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(imageVector = Icons.Rounded.Search, contentDescription = "Search", tint = accent, modifier = Modifier.width(18.dp))
                         Spacer(modifier = Modifier.width(8.dp))
@@ -264,7 +265,7 @@ fun HomeScreen(viewModel: LauncherViewModel, onPickWallpaper: () -> Unit) {
                                 val pageCells = if (pageIndex == 0) firstPageApps else extraPages.chunked(rowsFull * GRID_COLUMNS).getOrElse(pageIndex - 1) { emptyList() }.map { HomeCell.AppCell(it) }
                                 CellGrid(cells = pageCells, rows = if (pageIndex == 0) rowsFirst else rowsFull, config = config, animateIn = true, onFolder = { viewModel.openedFolder = it }, onLaunch = onLaunch, onMenu = onMenu)
                             }
-                            else -> CellGrid(cells = looseApps.drop(rowsFirst * GRID_COLUMNS).drop((page - 2) * rowsFull * GRID_COLUMNS).take(rowsFull * GRID_COLUMNS).map { HomeCell.AppCell(it) }, rows = rowsFull, config = config, animateIn = false, onFolder = { viewModel.openedFolder = it }, onLaunch = onLaunch, onMenu = onMenu)
+                            else -> CellGrid(cells = looseApps.drop(rowsFirst * GRID_COLUMNS).drop((page - 2) * rowsFull * GRID_COLUMNS).take(rowsFull * GRID_COLUMNS).map { HomeCell.AppCell(it) }, rows = rowsFull, config = config, animateIn = true, onFolder = { viewModel.openedFolder = it }, onLaunch = onLaunch, onMenu = onMenu)
                         }
                     }
                 }
@@ -349,8 +350,8 @@ private fun DashboardPage(viewModel: LauncherViewModel, config: LiquidThemeConfi
         MusicWidget(config = config, onEnableAccess = { viewModel.openSettingsScreen(context, Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS) }, modifier = Modifier.fillMaxWidth().height(96.dp))
 
         Row(modifier = Modifier.fillMaxWidth().height(168.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            GaugeCard(title = "MEMORY", detail = "${gb(memory.used)} / ${gb(memory.total)} GB", fraction = UsageStatFraction(memory.used, memory.total), config = config, modifier = Modifier.weight(1f).fillMaxHeight())
-            GaugeCard(title = "STORAGE", detail = "${gb(storage.used)} / ${gb(storage.total)} GB", fraction = UsageStatFraction(storage.used, storage.total), config = config, modifier = Modifier.weight(1f).fillMaxHeight())
+            GaugeCard(title = "MEMORY", detail = "${gb(memory.used)} / ${gb(memory.total)} GB", fraction = UsageStatFraction(memory.used, memory.total), config = config, modifier = Modifier.weight(1f))
+            GaugeCard(title = "STORAGE", detail = "${gb(storage.used)} / ${gb(storage.total)} GB", fraction = UsageStatFraction(storage.used, storage.total), config = config, modifier = Modifier.weight(1f))
         }
 
         SkyWidget(config = config, modifier = Modifier.fillMaxWidth().height(110.dp))
